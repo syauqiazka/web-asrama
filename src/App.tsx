@@ -2,6 +2,8 @@ import { useState, useMemo, useEffect } from "react";
 import { Navbar } from "./components/Navbar";
 import { SheetInputForm } from "./components/SheetInputForm";
 import { ProcessingStatusCard } from "./components/ProcessingStatusCard";
+import { PipelineFlowDiagram } from "./components/PipelineFlowDiagram";
+import { BanSummaryBanner } from "./components/BanSummaryBanner";
 import { StatsOverview } from "./components/StatsOverview";
 import { FilterBar } from "./components/FilterBar";
 import { StudentTable } from "./components/StudentTable";
@@ -25,23 +27,53 @@ import type {
   SheetInputItem,
   StudentSummary,
 } from "./types/attendance";
-import { DEMO_SHEETS } from "./services/mockData";
+import { FileSpreadsheet, ArrowRight } from "lucide-react";
 
 export function App() {
-  // Initial State: Form dengan 4 slot link default
+  // Tab Navigation: Tab 1 "input" vs Tab 2 "dashboard"
+  const [activeTab, setActiveTab] = useState<"input" | "dashboard">("input");
+  const [isChatOpen, setIsChatOpen] = useState(false);
+
+  // Form State: Tersimpan di localStorage agar tidak hilang saat halaman di-refresh
   const [sheetInputs, setSheetInputs] = useState<SheetInputItem[]>(() => {
-    return DEMO_SHEETS.slice(0, 5).map((d, i) => ({
-      id: `initial-sheet-${i + 1}`,
-      url: d.url,
-      sheetTitle: d.name,
-      status: "idle",
-    }));
+    const saved = localStorage.getItem("asrama_sheet_inputs");
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch {}
+    }
+    return [
+      { id: "sheet-1", url: "", status: "idle" },
+      { id: "sheet-2", url: "", status: "idle" },
+      { id: "sheet-3", url: "", status: "idle" },
+      { id: "sheet-4", url: "", status: "idle" },
+    ];
   });
 
-  const [allRecords, setAllRecords] = useState<AttendanceRecord[]>([]);
+  // Data Records & Satus Pemrosesan: Tersimpan di localStorage agar rekap tidak hilang saat refresh
+  const [allRecords, setAllRecords] = useState<AttendanceRecord[]>(() => {
+    const saved = localStorage.getItem("asrama_cached_records");
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      } catch {}
+    }
+    return [];
+  });
   const [isProcessing, setIsProcessing] = useState(false);
-  const [hasProcessed, setHasProcessed] = useState(false);
+  const [hasProcessed, setHasProcessed] = useState(() => {
+    return localStorage.getItem("asrama_has_processed") === "true";
+  });
   const [notificationMsg, setNotificationMsg] = useState<string | null>(null);
+
+  // Simpan sheetInputs otomatis ke localStorage setiap kali ada perubahan
+  useEffect(() => {
+    try {
+      localStorage.setItem("asrama_sheet_inputs", JSON.stringify(sheetInputs));
+    } catch {}
+  }, [sheetInputs]);
 
   // Modals state
   const [isRulesModalOpen, setIsRulesModalOpen] = useState(false);
@@ -73,27 +105,31 @@ export function App() {
     localStorage.setItem("asrama_ai_settings", JSON.stringify(newSettings));
   };
 
-  // Filter state
+  // Handler Reset Form & Data: Kosongkan form dan hapus cache localStorage
+  const handleResetData = () => {
+    setAllRecords([]);
+    setHasProcessed(false);
+    try {
+      localStorage.removeItem("asrama_cached_records");
+      localStorage.removeItem("asrama_has_processed");
+    } catch {}
+  };
+
+  // Filter state: Default hanya menampilkan santri yang kena ban (>0 jam)
   const [filters, setFilters] = useState<FilterOptions>({
     searchQuery: "",
     startDate: "",
     endDate: "",
     categoryFilter: "all",
-    violationFilter: "all",
+    violationFilter: "violation_only",
     sortBy: "sanctionHours_desc",
   });
 
-  // Load awal data demo
-  useEffect(() => {
-    handleProcessAllSheets();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Alur Pemrosesan End-to-End Multi-Spreadsheet (dengan dukungan Multi-SubTab Otomatis)
-  const handleProcessAllSheets = async () => {
+  // Alur Pemrosesan End-to-End Multi-Spreadsheet (hingga 20 Workbook + Multi-Tab)
+  const handleProcessAllSheets = async (isInitialLoad: boolean = false) => {
     const validInputs = sheetInputs.filter((s) => s.url.trim().length > 0);
     if (validInputs.length === 0) {
-      alert("Harap masukkan minimal 1 link Google Spreadsheet.");
+      alert("Harap masukkan minimal 1 link Google Spreadsheet / Workbook.");
       return;
     }
 
@@ -137,15 +173,20 @@ export function App() {
           )
         );
 
-        // Kasus A: Multi-SubTab (seperti Shubuh, Magrib, Isya, Senin, Sabtu)
+        // Kasus A: Multi-SubTab (seperti Subuh, Maghrib, Isya, Senin, Sabtu)
         if (fetchRes.isMultiTab && fetchRes.tabs && fetchRes.tabs.length > 0) {
           let sheetTotalRecords = 0;
           const detectedCategories: string[] = [];
 
           for (const tab of fetchRes.tabs) {
+            // Sertakan judul spreadsheet induk (misal "ABSENSI PIKET PAGI") ke nama tab agar AI & heuristik mengenali konteks hari vs roan
+            const fullTabTitle = fetchRes.spreadsheetTitle
+              ? `${fetchRes.spreadsheetTitle} - Tab ${tab.tabName}`
+              : tab.tabName;
+
             const tabClassification = await classifySheetWithAI(
               tab.rows,
-              tab.tabName,
+              fullTabTitle,
               aiSettings
             );
 
@@ -184,9 +225,13 @@ export function App() {
 
         // Kasus B: Single Tab
         if (fetchRes.rows && fetchRes.rows.length > 0) {
+          const fullTitle = fetchRes.spreadsheetTitle
+            ? `${fetchRes.spreadsheetTitle} - ${item.sheetTitle || fetchRes.tabName || ""}`
+            : (item.sheetTitle || fetchRes.tabName || "");
+
           const classification = await classifySheetWithAI(
             fetchRes.rows,
-            item.sheetTitle || fetchRes.tabName || "",
+            fullTitle,
             aiSettings
           );
 
@@ -251,9 +296,20 @@ export function App() {
     setAllRecords(accumulatedRecords);
     setIsProcessing(false);
 
+    // Simpan hasil rekap ke localStorage agar saat refresh halaman tidak hilang
+    try {
+      localStorage.setItem("asrama_cached_records", JSON.stringify(accumulatedRecords));
+      localStorage.setItem("asrama_has_processed", "true");
+    } catch {}
+
+    // AUTO-SWITCH KE TAB 2 (DASHBOARD PELANGGARAN) BEGITU PROSES SELESAI
+    if (!isInitialLoad) {
+      setActiveTab("dashboard");
+    }
+
     if (accumulatedRecords.length > 0) {
       setNotificationMsg(
-        `Berhasil merekapitulasi ${accumulatedRecords.length} catatan absensi dari spreadsheet yang dimasukkan!`
+        `Berhasil merekapitulasi ${accumulatedRecords.length} catatan absensi dari seluruh spreadsheet!`
       );
       setTimeout(() => setNotificationMsg(null), 7000);
     }
@@ -268,23 +324,32 @@ export function App() {
     return Array.from(set);
   }, [allRecords]);
 
-  // Filter & Agregasi santri berdasarkan kriteria
-  const filteredSummaries = useMemo(() => {
-    let filteredRecords = allRecords;
-
+  // Agregasi seluruh data periode aktif (sebelum filter pelanggaran)
+  const allPeriodSummaries = useMemo(() => {
+    let periodRecords = allRecords;
     if (filters.startDate) {
-      filteredRecords = filteredRecords.filter((r) => r.date >= filters.startDate);
+      periodRecords = periodRecords.filter((r) => r.date >= filters.startDate);
     }
     if (filters.endDate) {
-      filteredRecords = filteredRecords.filter((r) => r.date <= filters.endDate);
+      periodRecords = periodRecords.filter((r) => r.date <= filters.endDate);
     }
+    return aggregateStudentSummaries(periodRecords);
+  }, [allRecords, filters.startDate, filters.endDate]);
+
+  const totalViolatorsCount = useMemo(() => {
+    return allPeriodSummaries.filter((s) => s.totalSanctionHours > 0).length;
+  }, [allPeriodSummaries]);
+
+  // Filter santri sesuai kriteria pencarian, kategori, dan toggle status pelanggaran
+  const filteredSummaries = useMemo(() => {
+    let summaries = allPeriodSummaries;
+
     if (filters.categoryFilter !== "all") {
-      filteredRecords = filteredRecords.filter(
-        (r) => r.category === filters.categoryFilter
+      // Jika memfilter kategori spesifik, hanya santri yang memiliki pelanggaran pada kategori tersebut
+      summaries = summaries.filter((s) =>
+        s.breakdown.some((b) => b.category === filters.categoryFilter)
       );
     }
-
-    let summaries = aggregateStudentSummaries(filteredRecords);
 
     if (filters.searchQuery.trim()) {
       const q = filters.searchQuery.toLowerCase().trim();
@@ -298,16 +363,20 @@ export function App() {
     }
 
     return summaries;
-  }, [allRecords, filters]);
+  }, [allPeriodSummaries, filters.categoryFilter, filters.searchQuery, filters.violationFilter]);
 
   return (
     <div className="app-container">
-      {/* Navbar & Branding */}
+      {/* Navbar dengan Tab Switcher & Branding */}
       <Navbar
+        activeTab={activeTab}
+        onTabChange={(tab) => setActiveTab(tab)}
         onOpenSettings={() => setIsSettingsModalOpen(true)}
         onOpenRules={() => setIsRulesModalOpen(true)}
         onOpenExport={() => setIsExportModalOpen(true)}
-        hasData={filteredSummaries.length > 0}
+        onOpenChat={() => setIsChatOpen(true)}
+        hasData={allRecords.length > 0}
+        bannedCount={totalViolatorsCount}
       />
 
       {/* Toast Notification */}
@@ -330,48 +399,106 @@ export function App() {
           <span>{notificationMsg}</span>
           <button
             onClick={() => setNotificationMsg(null)}
-            style={{ color: "#34d399", fontWeight: 700 }}
+            style={{ color: "#34d399", fontWeight: 700, background: "none", border: "none", cursor: "pointer" }}
           >
             ✕
           </button>
         </div>
       )}
 
-      {/* Form Input 1 - 6 Google Spreadsheet */}
-      <SheetInputForm
-        sheetInputs={sheetInputs}
-        setSheetInputs={setSheetInputs}
-        onSubmit={handleProcessAllSheets}
-        isLoading={isProcessing}
-        onOpenRules={() => setIsRulesModalOpen(true)}
-      />
-
-      {/* Status Pemrosesan Per Sheet */}
-      <ProcessingStatusCard
-        sheetInputs={sheetInputs}
-        isProcessing={isProcessing}
-      />
-
-      {/* Ringkasan & Dashboard Utama */}
-      {hasProcessed && (
-        <>
-          <StatsOverview summaries={filteredSummaries} />
-
-          <FilterBar
-            filters={filters}
-            setFilters={setFilters}
-            availableCategories={availableCategories}
+      {/* TAB 1: INPUT SHEET (Form Input hingga 20 Workbook, Status Per Sheet, & Diagram Flow) */}
+      {activeTab === "input" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+          {/* Form Input 1 - 20 Google Spreadsheet */}
+          <SheetInputForm
+            sheetInputs={sheetInputs}
+            setSheetInputs={setSheetInputs}
+            onSubmit={() => handleProcessAllSheets(false)}
+            isLoading={isProcessing}
+            onOpenRules={() => setIsRulesModalOpen(true)}
+            onResetData={handleResetData}
           />
 
-          <StudentTable
-            students={filteredSummaries}
-            onSelectStudent={(student) => setSelectedStudent(student)}
+          {/* Status Pemrosesan Tiap Sheet / Workbook */}
+          <ProcessingStatusCard
+            sheetInputs={sheetInputs}
+            isProcessing={isProcessing}
           />
-        </>
+
+          {/* Diagram Flow Visual Interaktif */}
+          <PipelineFlowDiagram />
+        </div>
       )}
 
-      {/* AI Chatbot Asrama Floating Assistant */}
-      <AIChatBot students={filteredSummaries} />
+      {/* TAB 2: DASHBOARD PELANGGARAN (Otomatis Tampil Saat Selesai Proses) */}
+      {activeTab === "dashboard" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+          {!hasProcessed || allRecords.length === 0 ? (
+            <div
+              className="glass-card"
+              style={{
+                textAlign: "center",
+                padding: "48px 24px",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                gap: "12px",
+              }}
+            >
+              <FileSpreadsheet size={48} style={{ color: "var(--text-muted)" }} />
+              <h3 style={{ color: "#fff", fontSize: "1.2rem" }}>
+                Belum Ada Data yang Direkapitulasi
+              </h3>
+              <p style={{ color: "var(--text-secondary)", maxWidth: "480px", fontSize: "0.875rem" }}>
+                Silakan beralih ke <strong>Tab 1: Input Sheet</strong>, masukkan link Google Spreadsheet / Workbook, lalu klik tombol "Proses & Rekapitulasi Data".
+              </p>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => setActiveTab("input")}
+                style={{ marginTop: "8px" }}
+              >
+                Ke Tab 1: Input Sheet <ArrowRight size={16} />
+              </button>
+            </div>
+          ) : (
+            <>
+              {/* Rangkuman Otomatis Siapa Saja yang Terkena Ban & Total Jamnya */}
+              <BanSummaryBanner
+                students={allPeriodSummaries}
+                onSelectStudentName={(name) =>
+                  setFilters((prev) => ({ ...prev, searchQuery: name, violationFilter: "all" }))
+                }
+              />
+
+              {/* Ringkasan Statistik Global */}
+              <StatsOverview summaries={allPeriodSummaries} />
+
+              {/* Filter Bar: Pencarian Nama, Rentang Tanggal, & Switch Kena Ban vs Semua Santri */}
+              <FilterBar
+                filters={filters}
+                setFilters={setFilters}
+                availableCategories={availableCategories}
+                totalViolators={totalViolatorsCount}
+                totalStudents={allPeriodSummaries.length}
+              />
+
+              {/* Tabel Santri Pelanggar & Reward Device */}
+              <StudentTable
+                students={filteredSummaries}
+                onSelectStudent={(student) => setSelectedStudent(student)}
+              />
+            </>
+          )}
+        </div>
+      )}
+
+      {/* AI Chatbot Asrama Floating Assistant & Navbar Trigger */}
+      <AIChatBot
+        students={allPeriodSummaries}
+        isOpen={isChatOpen}
+        onOpenChange={setIsChatOpen}
+      />
 
       {/* Modals */}
       <RulesGuideModal

@@ -55,9 +55,10 @@ export const StudentTable: React.FC<StudentTableProps> = ({
             <tr>
               <th style={{ width: "60px", textAlign: "center" }}>Rank</th>
               <th>Nama Santri</th>
-              <th>Total Sanksi</th>
-              <th>Jumlah Pelanggaran</th>
-              <th>Rincian Kategori Pelanggaran</th>
+              <th>Total Jam Kena Ban</th>
+              <th>Pelanggaran Sholat (Subuh/Maghrib/Isya)</th>
+              <th>Pelanggaran Piket (Pagi/Sabtu/Sore)</th>
+              <th>Reward Device (Baju Koko)</th>
               <th style={{ textAlign: "right", paddingRight: "24px" }}>Aksi</th>
             </tr>
           </thead>
@@ -65,6 +66,35 @@ export const StudentTable: React.FC<StudentTableProps> = ({
             {students.map((student, index) => {
               const isExpanded = expandedStudent === student.studentName;
               const hasViolations = student.totalSanctionHours > 0;
+
+              // Sholat Violations Breakdown (Subuh, Maghrib, Isya)
+              const sholatBreakdown = student.breakdown.filter(
+                (b) =>
+                  b.category === "sholat_subuh" ||
+                  b.category === "sholat_maghrib" ||
+                  b.category === "sholat_isya"
+              );
+              const sholatCount = sholatBreakdown.reduce(
+                (acc, c) => acc + c.violationCount,
+                0
+              );
+              const sholatHours = sholatBreakdown.reduce(
+                (acc, c) => acc + c.hours,
+                0
+              );
+
+              // Piket Violations Breakdown (Pagi, Sabtu/Roan, Sore)
+              const piketBreakdown = student.breakdown.filter((b) =>
+                b.category.startsWith("piket_")
+              );
+              const piketCount = piketBreakdown.reduce(
+                (acc, c) => acc + c.violationCount,
+                0
+              );
+              const piketHours = piketBreakdown.reduce(
+                (acc, c) => acc + c.hours,
+                0
+              );
 
               // Rank styling
               let rankBadge = <span className="rank-badge rank-normal">{index + 1}</span>;
@@ -84,14 +114,14 @@ export const StudentTable: React.FC<StudentTableProps> = ({
               );
               if (student.totalSanctionHours >= 5) {
                 hoursBadge = (
-                  <span className="badge badge-danger">
-                    {student.totalSanctionHours} Jam Sanksi
+                  <span className="badge badge-danger" style={{ fontSize: "0.85rem", padding: "4px 10px" }}>
+                    {student.totalSanctionHours} Jam Ban
                   </span>
                 );
               } else if (student.totalSanctionHours > 0) {
                 hoursBadge = (
-                  <span className="badge badge-warning">
-                    {student.totalSanctionHours} Jam Sanksi
+                  <span className="badge badge-warning" style={{ fontSize: "0.85rem", padding: "4px 10px" }}>
+                    {student.totalSanctionHours} Jam Ban
                   </span>
                 );
               }
@@ -110,41 +140,89 @@ export const StudentTable: React.FC<StudentTableProps> = ({
                     </td>
                     <td>{hoursBadge}</td>
                     <td>
-                      <span style={{ color: hasViolations ? "#fbbf24" : "var(--text-muted)" }}>
-                        {student.violationCount} kali kejadian
-                      </span>
+                      {sholatCount > 0 ? (
+                        <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                          <span style={{ color: "#fb7185", fontWeight: 700, fontSize: "0.85rem" }}>
+                            {sholatCount}x Alpha (+{sholatHours} Jam)
+                          </span>
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
+                            {sholatBreakdown.map((b) => (
+                              <span
+                                key={b.category}
+                                className="chip"
+                                style={{
+                                  fontSize: "0.725rem",
+                                  padding: "2px 6px",
+                                  background: "rgba(244, 63, 94, 0.15)",
+                                  borderColor: "rgba(244, 63, 94, 0.3)",
+                                  color: "#fb7185",
+                                }}
+                              >
+                                <strong>{b.categoryLabel.replace("Sholat ", "")}:</strong> {b.violationCount}x A ({b.hours}j)
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      ) : (
+                        <span style={{ color: "#34d399", fontSize: "0.8rem" }}>
+                          ✓ Sholat Tertib (0x Alpha)
+                        </span>
+                      )}
                     </td>
                     <td>
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
-                        {student.breakdown.length === 0 ? (
-                          <span style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>
-                            Tidak ada pelanggaran
+                      {piketCount > 0 ? (
+                        <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                          <span style={{ color: "#fbbf24", fontWeight: 700, fontSize: "0.85rem" }}>
+                            {piketCount}x Mangkir (+{piketHours} Jam)
                           </span>
-                        ) : (
-                          student.breakdown.map((b) => (
-                            <span
-                              key={b.category}
-                              className="chip"
-                              style={{
-                                fontSize: "0.75rem",
-                                padding: "2px 8px",
-                                background: b.category.startsWith("sholat")
-                                  ? "rgba(244, 63, 94, 0.12)"
-                                  : "rgba(245, 158, 11, 0.12)",
-                                borderColor: b.category.startsWith("sholat")
-                                  ? "rgba(244, 63, 94, 0.25)"
-                                  : "rgba(245, 158, 11, 0.25)",
-                              }}
-                            >
-                              <span>{b.categoryLabel}:</span>
-                              <strong>{b.hours}j</strong>
-                              <span style={{ color: "var(--text-muted)", fontSize: "0.7rem" }}>
-                                ({b.violationCount}x)
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
+                            {piketBreakdown.map((b) => (
+                              <span
+                                key={b.category}
+                                className="chip"
+                                style={{
+                                  fontSize: "0.725rem",
+                                  padding: "2px 6px",
+                                  background: "rgba(245, 158, 11, 0.15)",
+                                  borderColor: "rgba(245, 158, 11, 0.3)",
+                                  color: "#fbbf24",
+                                }}
+                              >
+                                <strong>{b.categoryLabel.replace("Piket ", "")}:</strong> {b.violationCount}x X ({b.hours}j)
                               </span>
-                            </span>
-                          ))
-                        )}
-                      </div>
+                            ))}
+                          </div>
+                        </div>
+                      ) : (
+                        <span style={{ color: "#34d399", fontSize: "0.8rem" }}>
+                          ✓ Piket Tertib (0x X)
+                        </span>
+                      )}
+                    </td>
+                    <td>
+                      {student.rewardDeviceHours > 0 ? (
+                        <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                          <span
+                            className="badge badge-success"
+                            style={{
+                              fontSize: "0.8rem",
+                              padding: "3px 8px",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "4px",
+                            }}
+                          >
+                            +{student.rewardDeviceHours} Jam Device
+                          </span>
+                          <span style={{ fontSize: "0.7rem", color: "#34d399" }}>
+                            {student.bajuKokoEligibleDays} Hari Koko Lengkap
+                          </span>
+                        </div>
+                      ) : (
+                        <span style={{ color: "var(--text-muted)", fontSize: "0.75rem" }}>
+                          0 Jam
+                        </span>
+                      )}
                     </td>
                     <td style={{ textAlign: "right", paddingRight: "20px" }}>
                       <div
@@ -179,7 +257,7 @@ export const StudentTable: React.FC<StudentTableProps> = ({
                   {/* Expanded Row Content */}
                   {isExpanded && (
                     <tr>
-                      <td colSpan={6} style={{ padding: "0" }}>
+                      <td colSpan={7} style={{ padding: "0" }}>
                         <div className="expanded-row-content">
                           <div
                             style={{

@@ -19,6 +19,7 @@ interface SheetInputFormProps {
   onSubmit: () => void;
   isLoading: boolean;
   onOpenRules: () => void;
+  onResetData?: () => void;
 }
 
 export const SheetInputForm: React.FC<SheetInputFormProps> = ({
@@ -27,6 +28,7 @@ export const SheetInputForm: React.FC<SheetInputFormProps> = ({
   onSubmit,
   isLoading,
   onOpenRules,
+  onResetData,
 }) => {
   const handleUrlChange = (id: string, newUrl: string) => {
     setSheetInputs((prev) =>
@@ -48,17 +50,15 @@ export const SheetInputForm: React.FC<SheetInputFormProps> = ({
     );
   };
 
-  const handleAddLink = () => {
-    if (sheetInputs.length >= 6) return;
-    const newId = `sheet-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
-    setSheetInputs((prev) => [
-      ...prev,
-      {
-        id: newId,
-        url: "",
-        status: "idle",
-      },
-    ]);
+  const handleAddLink = (count: number = 1) => {
+    if (sheetInputs.length >= 20) return;
+    const canAdd = Math.min(count, 20 - sheetInputs.length);
+    const newItems: SheetInputItem[] = Array.from({ length: canAdd }).map((_, idx) => ({
+      id: `sheet-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 6)}`,
+      url: "",
+      status: "idle",
+    }));
+    setSheetInputs((prev) => [...prev, ...newItems]);
   };
 
   const handleRemoveLink = (id: string) => {
@@ -67,7 +67,7 @@ export const SheetInputForm: React.FC<SheetInputFormProps> = ({
   };
 
   const handleLoadDemoData = () => {
-    const demoItems: SheetInputItem[] = DEMO_SHEETS.slice(0, 5).map(
+    const demoItems: SheetInputItem[] = DEMO_SHEETS.map(
       (demo, idx) => ({
         id: `demo-${idx + 1}-${Date.now()}`,
         url: demo.url,
@@ -87,9 +87,12 @@ export const SheetInputForm: React.FC<SheetInputFormProps> = ({
       })
     );
     setSheetInputs(emptyItems);
+    if (onResetData) {
+      onResetData();
+    }
   };
 
-  // Validasi form: cukup minimal 1 link yang terisi dan valid
+  // Validasi form: minimal 1 link terisi dan valid, maksimal 20 workbook
   const filledCount = sheetInputs.filter((s) => s.url.trim().length > 0).length;
   const hasErrors = sheetInputs.some(
     (s) => s.url.trim().length > 0 && s.errorMessage
@@ -102,10 +105,10 @@ export const SheetInputForm: React.FC<SheetInputFormProps> = ({
         <div>
           <h2 className="card-title">
             <FileSpreadsheet style={{ color: "var(--primary)" }} />
-            Input Link Google Spreadsheet (1 – 6 Link)
+            Input Link Google Spreadsheet / Workbook (Hingga 20 Workbook)
           </h2>
           <p className="card-subtitle">
-            Paste link Google Spreadsheet absensi dan piket. Sistem otomatis mengenali semua sub-tab sholat (Subuh, Maghrib, Isya) & piket.
+            Masukkan link Google Spreadsheet (bisa multi-tab per workbook). Sistem otomatis membaca semua sub-tab sholat (Subuh, Maghrib, Isya) & piket.
           </p>
         </div>
         <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
@@ -116,14 +119,14 @@ export const SheetInputForm: React.FC<SheetInputFormProps> = ({
             onClick={onOpenRules}
           >
             <HelpCircle size={14} />
-            Panduan Aturan Sanksi
+            Panduan Aturan & Reward
           </button>
           <button
             type="button"
             className="btn btn-secondary"
             style={{ fontSize: "0.775rem", padding: "6px 12px" }}
             onClick={handleLoadDemoData}
-            title="Muat 5 sheet simulasi lengkap"
+            title="Muat 5 workbook simulasi lengkap (Sholat + Piket)"
           >
             <Sparkles size={14} style={{ color: "#38bdf8" }} />
             Muat Data Demo
@@ -133,7 +136,7 @@ export const SheetInputForm: React.FC<SheetInputFormProps> = ({
             className="btn btn-secondary"
             style={{ fontSize: "0.775rem", padding: "6px 12px" }}
             onClick={handleResetForm}
-            title="Kosongkan form"
+            title="Kosongkan form ke 4 slot awal"
           >
             <RotateCcw size={14} />
             Reset
@@ -144,6 +147,7 @@ export const SheetInputForm: React.FC<SheetInputFormProps> = ({
       <div style={{ marginTop: "16px" }}>
         {sheetInputs.map((sheet, index) => {
           const isError = Boolean(sheet.errorMessage);
+          const canDelete = sheetInputs.length > 1;
           return (
             <div key={sheet.id} style={{ marginBottom: "12px" }}>
               <div className="sheet-input-row">
@@ -156,7 +160,7 @@ export const SheetInputForm: React.FC<SheetInputFormProps> = ({
                   onChange={(e) => handleUrlChange(sheet.id, e.target.value)}
                   disabled={isLoading}
                 />
-                {sheetInputs.length > 1 && (
+                {canDelete && (
                   <button
                     type="button"
                     className="btn-outline-danger btn-icon"
@@ -187,26 +191,45 @@ export const SheetInputForm: React.FC<SheetInputFormProps> = ({
       </div>
 
       <div className="form-actions-row">
-        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
           <button
             type="button"
             className="btn btn-secondary"
-            onClick={handleAddLink}
-            disabled={sheetInputs.length >= 6 || isLoading}
+            onClick={() => handleAddLink(1)}
+            disabled={sheetInputs.length >= 20 || isLoading}
             title={
-              sheetInputs.length >= 6
-                ? "Maksimal 6 link"
-                : "Tambah baris link Google Spreadsheet"
+              sheetInputs.length >= 20
+                ? "Maksimal 20 workbook telah tercapai"
+                : "Tambah 1 baris link workbook (maksimal 20)"
             }
           >
             <Plus size={16} />
-            Tambah Link ({sheetInputs.length}/6)
+            +1 Slot ({sheetInputs.length}/20)
           </button>
 
-          <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
+          {sheetInputs.length <= 15 && (
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => handleAddLink(5)}
+              disabled={isLoading}
+              title="Tambah 5 slot link sekaligus"
+            >
+              <Plus size={16} />
+              +5 Slot
+            </button>
+          )}
+
+          <span
+            style={{
+              fontSize: "0.825rem",
+              color: filledCount === 0 ? "var(--text-muted)" : "var(--accent)",
+              fontWeight: 500,
+            }}
+          >
             {filledCount === 0
-              ? "Masukkan minimal 1 link spreadsheet"
-              : `${filledCount} spreadsheet siap diproses`}
+              ? "Masukkan minimal 1 link spreadsheet / workbook"
+              : `✓ ${filledCount} workbook siap diproses (maksimal 20)`}
           </span>
         </div>
 

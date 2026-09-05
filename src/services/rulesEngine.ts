@@ -45,6 +45,8 @@ export const CATEGORY_LABELS: Record<AttendanceCategory, string> = {
   piket_pagi: "Piket Pagi/Harian",
   piket_sabtu: "Piket Sabtu/Roan",
   piket_sore: "Piket Sore",
+  baju_koko: "Baju Koko (Reward Device)",
+  pakaian_rapih: "Pakaian Rapih Sholat (Reward Device)",
 };
 
 /**
@@ -54,6 +56,11 @@ export function calculateSanctionHours(
   category: AttendanceCategory,
   rawStatus: RawStatus
 ): number {
+  // 0. Kategori Baju Koko & Pakaian Rapih - Bukan pelanggaran, jam sanksi selalu 0
+  if (category === "baju_koko" || category === "pakaian_rapih") {
+    return 0;
+  }
+
   // 1. Kategori Sholat
   if (
     category.startsWith("sholat_") ||
@@ -165,6 +172,34 @@ export function aggregateStudentSummaries(
       }
     }
 
+    // Perhitungan Reward Device: Baju Koko / Pakaian Rapih Sholat Wajib
+    // - baju_koko (format lama ✓/X per hari): centang (✓) = +1 jam device per hari
+    // - pakaian_rapih (format baru multi-kolom Kopiah/Koko/Sarung/Jubah):
+    //   Rapih = (Jubah+Kopiah) ATAU (Koko+Sarung+Kopiah) → +1 jam device per hari
+    // Maksimal 7 hari (7 jam reward device)
+    const rewardRecords = entry.records.filter(
+      (r) => r.category === "baju_koko" || r.category === "pakaian_rapih"
+    );
+    let eligibleBajuKokoDays = 0;
+
+    if (rewardRecords.length > 0) {
+      // Hitung hari unik yang punya setidaknya 1 record "check" (rapih)
+      const checkDates = new Set<string>();
+      for (const b of rewardRecords) {
+        if (b.rawStatus === "check") {
+          checkDates.add(b.date);
+        }
+      }
+      eligibleBajuKokoDays = checkDates.size;
+    } else {
+      // Jika tidak ada sheet baju koko / pakaian rapih yang diinput, reward device tetap 0
+      eligibleBajuKokoDays = 0;
+    }
+
+    // Maksimal 7 hari (7 jam reward device)
+    const rewardHours = Math.min(7, eligibleBajuKokoDays);
+    const netSanction = Math.max(0, totalHours - rewardHours);
+
     // Urutkan records santri secara kronologis (tanggal terbaru dulu)
     entry.records.sort(
       (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
@@ -176,6 +211,9 @@ export function aggregateStudentSummaries(
       violationCount: totalViolations,
       breakdown,
       records: entry.records,
+      rewardDeviceHours: rewardHours,
+      bajuKokoEligibleDays: eligibleBajuKokoDays,
+      netSanctionHours: netSanction,
     });
   }
 

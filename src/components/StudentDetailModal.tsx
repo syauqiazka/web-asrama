@@ -1,5 +1,5 @@
 import React from "react";
-import { X, Printer, User, Clock, AlertTriangle, Calendar } from "lucide-react";
+import { X, Printer, User, Clock, AlertTriangle, Calendar, CheckCircle2 } from "lucide-react";
 import { CATEGORY_LABELS } from "../services/rulesEngine";
 import type { StudentSummary, AttendanceRecord } from "../types/attendance";
 
@@ -53,7 +53,7 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+              gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
               gap: "12px",
             }}
           >
@@ -76,11 +76,11 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
                   textTransform: "uppercase",
                 }}
               >
-                <Clock size={14} /> Total Jam Sanksi
+                <Clock size={14} /> Total Jam Ban / Sanksi
               </div>
               <div
                 style={{
-                  fontSize: "1.8rem",
+                  fontSize: "1.6rem",
                   fontWeight: 800,
                   color: "#fff",
                   marginTop: "4px",
@@ -109,17 +109,53 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
                   textTransform: "uppercase",
                 }}
               >
-                <AlertTriangle size={14} /> Frekuensi Pelanggaran
+                <AlertTriangle size={14} /> Pelanggaran
               </div>
               <div
                 style={{
-                  fontSize: "1.8rem",
+                  fontSize: "1.6rem",
                   fontWeight: 800,
                   color: "#fff",
                   marginTop: "4px",
                 }}
               >
-                {student.violationCount} Kejadian
+                {student.violationCount}x
+              </div>
+            </div>
+
+            <div
+              style={{
+                background: "rgba(56, 189, 248, 0.08)",
+                border: "1px solid rgba(56, 189, 248, 0.2)",
+                borderRadius: "var(--radius-md)",
+                padding: "12px 16px",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  color: "#38bdf8",
+                  fontSize: "0.775rem",
+                  fontWeight: 600,
+                  textTransform: "uppercase",
+                }}
+              >
+                <CheckCircle2 size={14} /> Reward Device Koko
+              </div>
+              <div
+                style={{
+                  fontSize: "1.6rem",
+                  fontWeight: 800,
+                  color: "#38bdf8",
+                  marginTop: "4px",
+                }}
+              >
+                +{student.rewardDeviceHours || 0} Jam
+              </div>
+              <div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>
+                {student.bajuKokoEligibleDays || 0} Hari Koko Lengkap
               </div>
             </div>
           </div>

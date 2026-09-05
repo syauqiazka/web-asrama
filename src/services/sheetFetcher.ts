@@ -4,6 +4,7 @@ export interface ParsedSheetUrl {
   isValid: boolean;
   spreadsheetId?: string;
   gid?: string;
+  hasExplicitGid?: boolean;
   errorMessage?: string;
 }
 
@@ -20,6 +21,7 @@ export function validateGoogleSheetUrl(url: string): ParsedSheetUrl {
       isValid: true,
       spreadsheetId: matchedDemo.id,
       gid: "0",
+      hasExplicitGid: true,
     };
   }
 
@@ -44,15 +46,18 @@ export function validateGoogleSheetUrl(url: string): ParsedSheetUrl {
 
   // Ekstrak gid jika ada di query atau hash
   let gid = "0";
+  let hasExplicitGid = false;
   const gidMatch = trimmed.match(/[?&#]gid=([0-9]+)/);
   if (gidMatch && gidMatch[1]) {
     gid = gidMatch[1];
+    hasExplicitGid = true;
   }
 
   return {
     isValid: true,
     spreadsheetId,
     gid,
+    hasExplicitGid,
   };
 }
 
@@ -122,6 +127,7 @@ export interface FetchSheetResult {
   isMultiTab?: boolean;
   tabs?: TabData[];
   tabName?: string;
+  spreadsheetTitle?: string;
 }
 
 /**
@@ -154,6 +160,7 @@ export async function fetchGoogleSheetCSV(
       rows: parsedRows,
       sourceUrl: url,
       tabName: demo.name,
+      spreadsheetTitle: demo.name,
     };
   }
 
@@ -184,6 +191,7 @@ export async function fetchGoogleSheetCSV(
             isMultiTab: true,
             tabs: parsedTabs,
             sourceUrl: url,
+            spreadsheetTitle: data.spreadsheetTitle,
           };
         }
 
@@ -194,6 +202,7 @@ export async function fetchGoogleSheetCSV(
             rows: parseCSV(data.csv),
             sourceUrl: url,
             tabName: data.tabName,
+            spreadsheetTitle: data.spreadsheetTitle,
           };
         }
       }
@@ -206,8 +215,9 @@ export async function fetchGoogleSheetCSV(
   }
 
   // 3. Fallback direct client fetch
-  const gvizUrl = `https://docs.google.com/spreadsheets/d/${validation.spreadsheetId}/gviz/tq?tqx=out:csv&gid=${validation.gid}`;
-  const exportUrl = `https://docs.google.com/spreadsheets/d/${validation.spreadsheetId}/export?format=csv&gid=${validation.gid}`;
+  const gidParam = validation.hasExplicitGid ? `&gid=${validation.gid}` : "";
+  const gvizUrl = `https://docs.google.com/spreadsheets/d/${validation.spreadsheetId}/gviz/tq?tqx=out:csv${gidParam}`;
+  const exportUrl = `https://docs.google.com/spreadsheets/d/${validation.spreadsheetId}/export?format=csv${gidParam}`;
 
   try {
     const res = await fetch(exportUrl);

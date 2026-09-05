@@ -23,13 +23,22 @@ interface ChatMessage {
 interface AIChatBotProps {
   students: StudentSummary[];
   apiKey?: string;
+  isOpen?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
 export const AIChatBot: React.FC<AIChatBotProps> = ({
   students,
   apiKey = import.meta.env.VITE_GCP_API_KEY,
+  isOpen: controlledIsOpen,
+  onOpenChange,
 }) => {
-  const [isOpen, setIsOpen] = useState(false);
+  const [internalIsOpen, setInternalIsOpen] = useState(false);
+  const isOpen = controlledIsOpen !== undefined ? controlledIsOpen : internalIsOpen;
+  const setIsOpen = (val: boolean) => {
+    setInternalIsOpen(val);
+    onOpenChange?.(val);
+  };
   const [isExpanded, setIsExpanded] = useState(false);
   const [inputMessage, setInputMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -73,17 +82,26 @@ export const AIChatBot: React.FC<AIChatBotProps> = ({
       rank: idx + 1,
       name: s.studentName,
       totalHours: s.totalSanctionHours,
+      rewardDeviceHours: s.rewardDeviceHours || 0,
+      bajuKokoDays: s.bajuKokoEligibleDays || 0,
+      netSanctionHours: s.netSanctionHours ?? s.totalSanctionHours,
       violationsCount: s.violationCount,
       breakdown: s.breakdown.map(
         (b) => `${b.categoryLabel}: ${b.hours}j (${b.violationCount}x)`
       ),
     }));
 
+    const totalRewardHours = students.reduce(
+      (acc, curr) => acc + (curr.rewardDeviceHours || 0),
+      0
+    );
+
     return {
       totalSantriTerdata: totalStudents,
       totalSantriMelanggar: violators.length,
       totalSantriBebasSanksi: clean.length,
       totalAkumulasiJamSanksi: totalHours,
+      totalAkumulasiRewardDeviceHours: totalRewardHours,
       daftarPeringkatSanksiSantri: top10,
     };
   };
@@ -114,12 +132,13 @@ export const AIChatBot: React.FC<AIChatBotProps> = ({
 ATURAN BISNIS ASRAMA:
 1. Sholat Berjamaah: Hanya Subuh, Maghrib, Isya yang disanksi (Alpha = 2 jam sanksi). Hadir, Sakit, Izin = 0 jam. Waktu Dhuhur & Ashar tidak disanksi (0 jam).
 2. Piket Asrama: Tanda centang (✓/✔️) = 0 jam, Tanda silang (X/✖️) = 1 jam sanksi.
+3. Reward Jam Device (Baju Koko Lengkap): Santri yang tertib sholat Subuh, Maghrib, Isya dengan pakaian baju koko lengkap mendapatkan apresiasi tambahan jatah pemakaian device/gadget +1 jam per hari (maksimal hingga 7 hari / 7 jam reward per periode).
 
 RINGKASAN DATA AKTIF ASRAMA SAAT INI:
 ${JSON.stringify(contextData, null, 2)}
 
 Instruksi Tambahan:
-- Jawab pertanyaan seputar nama santri, jam sanksi, rincian pelanggaran, perbandingan, atau rekomendasi tindakan secara tepat berdasarkan data di atas.
+- Jawab pertanyaan seputar nama santri, jam sanksi, reward jam device baju koko, rincian pelanggaran, perbandingan, atau rekomendasi tindakan secara tepat berdasarkan data di atas.
 - Jika diminta membuat draft pesan WhatsApp atau surat teguran, buat dengan bahasa yang santun, islami, dan jelas.
 - Format teks dengan Markdown yang rapi (gunakan bold, bullet points, dan emoji secukupnya).`;
 

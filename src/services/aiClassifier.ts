@@ -22,39 +22,82 @@ export interface AISettings {
 }
 
 const MONTH_MAP: Record<string, string> = {
+  januari: "01",
+  january: "01",
   jan: "01",
+  februari: "02",
+  february: "02",
   feb: "02",
+  maret: "03",
+  march: "03",
   mar: "03",
+  april: "04",
   apr: "04",
-  may: "05",
   mei: "05",
+  may: "05",
+  juni: "06",
+  june: "06",
   jun: "06",
+  juli: "07",
+  july: "07",
   jul: "07",
-  aug: "08",
+  agustus: "08",
+  august: "08",
+  agust: "08",
   ags: "08",
+  aug: "08",
+  september: "09",
+  sept: "09",
   sep: "09",
-  oct: "10",
+  oktober: "10",
+  october: "10",
   okt: "10",
+  oct: "10",
+  november: "11",
+  nopember: "11",
   nov: "11",
-  dec: "12",
+  nop: "11",
+  desember: "12",
+  december: "12",
   des: "12",
+  dec: "12",
 };
 
 /**
  * Format tanggal ke ISO YYYY-MM-DD
  */
-export function normalizeDateToISO(rawDate: string, defaultMonth: string = "07"): string {
-  const trimmed = rawDate.trim();
+export function normalizeDateToISO(
+  rawDate: string,
+  defaultMonth: string = "09",
+  defaultYear: string = "2026"
+): string {
+  const trimmed = rawDate.trim().replace(/^tgl\.?\s*/i, "");
+
+  // Format standar ISO YYYY-MM-DD
   if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
     return trimmed;
   }
 
-  // Format DD-Mon (misal: 5-Jan, 12-Feb, 28-Oct)
-  const dMon = trimmed.match(/^(\d{1,2})-([a-zA-Z]{3,4})$/i);
+  // Format YYYY/MM/DD
+  const ymd = trimmed.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})$/);
+  if (ymd) {
+    return `${ymd[1]}-${ymd[2].padStart(2, "0")}-${ymd[3].padStart(2, "0")}`;
+  }
+
+  // Format DD-Mon atau DD Mon atau DD MMMM (misal: 5-Jan, 12 Feb, 28 Oktober)
+  const dMon = trimmed.match(/^(\d{1,2})[\s-]+([a-zA-Z]{3,12})$/i);
   if (dMon) {
     const day = dMon[1].padStart(2, "0");
     const mon = MONTH_MAP[dMon[2].toLowerCase()] || defaultMonth;
-    return `2026-${mon}-${day}`;
+    return `${defaultYear}-${mon}-${day}`;
+  }
+
+  // Format Mon DD (misal: Sep 05, September 5)
+  const monD = trimmed.match(/^([a-zA-Z]{3,12})[\s-]+(\d{1,2})$/i);
+  if (monD) {
+    const mon = MONTH_MAP[monD[1].toLowerCase()] || defaultMonth;
+    const day = monD[2].padStart(2, "0");
+    return `${defaultYear}-${mon}-${day}`;
   }
 
   // Format DD/MM/YYYY atau DD-MM-YYYY
@@ -66,12 +109,12 @@ export function normalizeDateToISO(rawDate: string, defaultMonth: string = "07")
     return `${year}-${month}-${day}`;
   }
 
-  // Format DD/MM
+  // Format DD/MM atau DD-MM
   const dm = trimmed.match(/^(\d{1,2})[/-](\d{1,2})$/);
   if (dm) {
     const day = dm[1].padStart(2, "0");
     const month = dm[2].padStart(2, "0");
-    return `2026-${month}-${day}`;
+    return `${defaultYear}-${month}-${day}`;
   }
 
   // Angka tanggal saja (1 sampai 31)
@@ -79,7 +122,7 @@ export function normalizeDateToISO(rawDate: string, defaultMonth: string = "07")
   if (dayOnly) {
     const d = parseInt(dayOnly[1]);
     if (d >= 1 && d <= 31) {
-      return `2026-${defaultMonth}-${dayOnly[1].padStart(2, "0")}`;
+      return `${defaultYear}-${defaultMonth}-${dayOnly[1].padStart(2, "0")}`;
     }
   }
 
@@ -89,7 +132,7 @@ export function normalizeDateToISO(rawDate: string, defaultMonth: string = "07")
     return parsed.toISOString().split("T")[0];
   }
 
-  return "2026-07-01";
+  return `${defaultYear}-${defaultMonth}-01`;
 }
 
 /**
@@ -127,11 +170,36 @@ export function heuristicClassifyAndParse(
   const header = rows[0].map((h) => h.toLowerCase());
   const contextText = (sheetTitle + " " + header.join(" ")).toLowerCase();
 
-  // Deteksi bulan jika tercantum di judul atau sel pertama
-  let detectedMonth = "07";
+  // Ekstrak bagian nama tab (setelah "- Tab ") untuk prioritas yang lebih tinggi
+  const tabNameMatch = sheetTitle.match(/- Tab (.+)$/i);
+  const tabNameOnly = (tabNameMatch ? tabNameMatch[1] : sheetTitle).toLowerCase();
+
+  // Deteksi tahun (default 2026 atau tahun saat ini)
+  let detectedYear = "2026";
+  const yearMatch = contextText.match(/20\d{2}/);
+  if (yearMatch) {
+    detectedYear = yearMatch[0];
+  }
+
+  // Deteksi bulan jika tercantum di judul atau sel header
+  let detectedMonth = String(new Date().getMonth() + 1).padStart(2, "0");
   for (const [monKey, monNum] of Object.entries(MONTH_MAP)) {
     if (contextText.includes(monKey)) {
       detectedMonth = monNum;
+      break;
+    }
+  }
+
+  // Jika belum terdeteksi dari kata, cek apakah ada format tanggal eksplisit seperti 2026-09-01 atau 01/09/2026 di header
+  for (const h of header) {
+    const isoM = h.match(/\d{4}-(\d{2})-\d{2}/);
+    if (isoM) {
+      detectedMonth = isoM[1];
+      break;
+    }
+    const dmyM = h.match(/\d{1,2}[/-](\d{1,2})[/-]\d{2,4}/);
+    if (dmyM) {
+      detectedMonth = dmyM[1].padStart(2, "0");
       break;
     }
   }
@@ -221,7 +289,7 @@ export function heuristicClassifyAndParse(
       dateColumns.push({
         colIndex: c,
         rawDate: colHeader,
-        isoDate: normalizeDateToISO(colHeader, detectedMonth),
+        isoDate: normalizeDateToISO(colHeader, detectedMonth, detectedYear),
       });
     }
   }
@@ -272,13 +340,57 @@ export function heuristicClassifyAndParse(
   let category: AttendanceCategory = "sholat_subuh";
   let reasoning = "";
 
-  if (isPiket) {
-    if (contextText.includes("sabtu") || contextText.includes("roan")) {
+  // Prioritaskan sheet baju koko / reward device
+  if (
+    contextText.includes("koko") ||
+    contextText.includes("device") ||
+    contextText.includes("tambahan jam") ||
+    contextText.includes("pakaian rapih")
+  ) {
+    category = "baju_koko";
+    reasoning =
+      "Terdeteksi sebagai Pencatatan Baju Koko Lengkap / Reward Device (+1 Jam per centang ✓, 0 Jam per X).";
+  } else if (isPiket) {
+    // Cek nama tab secara spesifik terlebih dahulu (prioritas lebih tinggi dari judul workbook)
+    const tabHasRoan =
+      tabNameOnly.includes("roan") ||
+      tabNameOnly.includes("kerja bakti") ||
+      tabNameOnly.includes("cuci tong");
+    const tabHasHarianKeyword =
+      tabNameOnly.includes("pagi") ||
+      tabNameOnly.includes("harian") ||
+      /\b(ahad|senin|selasa|rabu|kamis|jumat|sabtu)\b/.test(tabNameOnly);
+
+    if (
+      tabHasRoan ||
+      (!tabHasHarianKeyword &&
+        (contextText.includes("roan") ||
+          contextText.includes("kerja bakti") ||
+          contextText.includes("cuci tong")))
+    ) {
       category = "piket_sabtu";
-      reasoning = "Terdeteksi sebagai Piket Sabtu / Roan (Kerja Bakti).";
+      reasoning = "Terdeteksi sebagai Piket Roan (Kerja Bakti / Cuci Tong Sampah).";
     } else if (contextText.includes("sore")) {
       category = "piket_sore";
       reasoning = "Terdeteksi sebagai Piket Sore.";
+    } else if (
+      contextText.includes("pagi") ||
+      contextText.includes("harian") ||
+      tabNameOnly.includes("ahad") ||
+      tabNameOnly.includes("senin") ||
+      tabNameOnly.includes("selasa") ||
+      tabNameOnly.includes("rabu") ||
+      tabNameOnly.includes("kamis") ||
+      tabNameOnly.includes("jumat") ||
+      tabNameOnly.includes("sabtu") ||
+      contextText.includes("ahad")
+    ) {
+      // Hari-hari piket harian (termasuk Sabtu biasa sebagai bagian jadwal harian)
+      category = "piket_pagi";
+      reasoning = "Terdeteksi sebagai Piket Pagi / Harian.";
+    } else if (contextText.includes("sabtu") && !contextText.includes("pagi")) {
+      category = "piket_sabtu";
+      reasoning = "Terdeteksi sebagai Piket Sabtu / Roan.";
     } else {
       category = "piket_pagi";
       reasoning = "Terdeteksi sebagai Piket Pagi / Harian.";
@@ -338,10 +450,15 @@ CSV:
 \`\`\`csv
 ${sampleCsv}
 \`\`\`
+ATURAN KLASIFIKASI:
+1. Jika jadwal piket adalah piket harian / piket pagi (Ahad, Senin, Selasa, Rabu, Kamis, Jumat, Sabtu), pilih category "piket_pagi", JANGAN pilih "piket_sabtu".
+2. Category "piket_sabtu" HANYA untuk Piket Roan / Kerja Bakti Akbar (misal Cuci Tong Sampah atau Roan Sabtu).
+3. Category "baju_koko" HANYA untuk lembar penilaian pemakaian baju koko / pakaian rapih sholat lengkap, JANGAN pilih baju_koko untuk absensi sholat biasa.
+
 Balas HANYA JSON:
 {
   "sheetType": "piket" | "sholat" | "unknown",
-  "category": "sholat_subuh" | "sholat_maghrib" | "sholat_isya" | "sholat_dhuhur" | "sholat_ashar" | "piket_pagi" | "piket_sabtu" | "piket_sore",
+  "category": "sholat_subuh" | "sholat_maghrib" | "sholat_isya" | "sholat_dhuhur" | "sholat_ashar" | "piket_pagi" | "piket_sabtu" | "piket_sore" | "baju_koko",
   "confidence": number,
   "reasoning": string,
   "nameColumnIndex": number,
@@ -431,12 +548,12 @@ export function normalizeSheetData(
 
       let rawStatus: RawStatus = "H";
 
-      if (sheetType === "piket") {
+      if (sheetType === "piket" || category === "baju_koko") {
         if (
           cellValue.includes("✔️") ||
           cellValue.includes("✔") ||
           cellValue.includes("✓") ||
-          ["v", "V", "check", "1", "hadir"].includes(cellValue.toLowerCase())
+          ["v", "V", "check", "1", "hadir", "lengkap", "koko"].includes(cellValue.toLowerCase())
         ) {
           rawStatus = "check";
         } else if (
@@ -472,6 +589,7 @@ export function normalizeSheetData(
         sanctionHours,
         sourceSheetUrl,
         originalAreaOrNotes: areaInfo,
+        hasBajuKoko: category === "baju_koko" ? rawStatus === "check" : undefined,
       });
     }
   }

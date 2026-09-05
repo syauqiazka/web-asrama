@@ -17,10 +17,10 @@ function parseJsonBody(req: IncomingMessage): Promise<any> {
   });
 }
 
-// Ekstrak daftar tab dan gid dari HTML publik Google Spreadsheet
+// Ekstrak daftar tab, gid, dan judul spreadsheet dari HTML publik Google Spreadsheet
 async function discoverSpreadsheetTabs(
   spreadsheetId: string
-): Promise<{ gid: string; name: string }[]> {
+): Promise<{ tabs: { gid: string; name: string }[]; title: string }> {
   try {
     const res = await fetch(
       `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`,
@@ -32,23 +32,44 @@ async function discoverSpreadsheetTabs(
       }
     );
     const html = await res.text();
-    const matches = [
-      ...html.matchAll(/\\"([0-9]{5,12})\\",\[\{\\"1\\":\[\[0,0,\\"([^\\"]+)\\"\]/g),
+    const titleMatch = html.match(/<title>([^<]+)<\/title>/);
+    const title = titleMatch
+      ? titleMatch[1].replace(/ - Google (Spreadsheet|Sheets)$/i, "").trim()
+      : "";
+
+    // Google Sheets meng-embed metadata tab di HTML dalam format JSON string
+    const patterns = [
+      /\[\d+,\d+,\\\"(\d+)\\\",\[\{\\\"1\\\":\[\[\d+,\d+,\\\"([^\\\"]+)\\\"/g,
+      /\[\d+,\d+,"(\d+)",\[\{"1":\[\[\d+,\d+,"([^"]+)"/g,
+      /\\\"([0-9]{5,12})\\\",\[\{\\\"1\\\":\[\[\d+,\d+,\\\"([^\\\"]+)\\\"/g,
     ];
     const tabs: { gid: string; name: string }[] = [];
     const seenGid = new Set<string>();
 
-    for (const m of matches) {
-      const gid = m[1];
-      const name = m[2];
-      if (!seenGid.has(gid)) {
-        seenGid.add(gid);
-        tabs.push({ gid, name });
+    for (const pat of patterns) {
+      const matches = [...html.matchAll(pat)];
+      for (const m of matches) {
+        const gid = m[1];
+        const name = m[2];
+        if (!seenGid.has(gid)) {
+          seenGid.add(gid);
+          tabs.push({ gid, name });
+        }
+      }
+      if (tabs.length > 0) break;
+    }
+
+    // Jika tidak ada tab terdeteksi tapi ada gridId default di bootstrapData
+    if (tabs.length === 0) {
+      const gridIdMatch = html.match(/"gridId":([0-9]+)/);
+      if (gridIdMatch) {
+        tabs.push({ gid: gridIdMatch[1], name: "Sheet1" });
       }
     }
-    return tabs;
+
+    return { tabs, title };
   } catch {
-    return [];
+    return { tabs: [], title: "" };
   }
 }
 
@@ -84,30 +105,32 @@ export default defineConfig(({ mode }) => {
               }
 
               // Deteksi semua tab yang ada pada spreadsheet ini
-              const allTabs = await discoverSpreadsheetTabs(spreadsheetId);
+              const { tabs: allTabs, title: spreadsheetTitle } = await discoverSpreadsheetTabs(spreadsheetId);
 
-              // Cek apakah gid yang diminta adalah tab non-data (seperti SOP atau Laporan)
-              const requestedTab = allTabs.find((t) => t.gid === gid);
-              const isNonDataTab =
-                requestedTab &&
-                /^(sop|laporan|example|oret-oret|data diri)$/i.test(
-                  requestedTab.name.trim()
+              // Filter tab non-data (seperti SOP, oret-oret, example, template)
+              const isIgnoredTab = (name: string) =>
+                /^(sop|laporan|example|contoh|oret-oret|data diri|template|petunjuk)$/i.test(
+                  name.trim()
                 );
 
-              // Ambil daftar sub-tab absensi atau piket yang relevan
-              const relevantTabs = allTabs.filter((t) =>
-                /^(shubuh|subuh|magrib|maghrib|isya|dzuhur|dhuhur|ashar|senin|selasa|rabu|kamis|jumat|sabtu|ahad|piket|roan)$/i.test(
-                  t.name.trim()
-                )
-              );
+              const requestedTab = allTabs.find((t) => t.gid === gid);
+              const isNonDataTab = requestedTab && isIgnoredTab(requestedTab.name);
 
+              // Ambil daftar tab yang valid (bukan tab SOP/oret-oret)
+              const relevantTabs = allTabs.filter((t) => !isIgnoredTab(t.name));
+
+              // Jika ada lebih dari 1 tab relevan dan user mengirim link workbook tanpa gid khusus (atau tab non-data),
+              // otomatis ambil semua sub-tab!
               const multiTabsData: {
                 gid: string;
                 tabName: string;
                 csv: string;
               }[] = [];
 
-              if (relevantTabs.length > 0 && (isNonDataTab || !gid || gid === "0")) {
+              const shouldFetchAllTabs =
+                relevantTabs.length > 1 && (isNonDataTab || !gid || gid === "0" || !allTabs.some(t => t.gid === gid));
+
+              if (shouldFetchAllTabs) {
                 for (const t of relevantTabs) {
                   try {
                     const tabRes = await fetch(
@@ -139,13 +162,14 @@ export default defineConfig(({ mode }) => {
                     isMultiTab: true,
                     tabs: multiTabsData,
                     spreadsheetId,
+                    spreadsheetTitle,
                   })
                 );
                 return;
               }
 
               // Fetch tab tunggal
-              const sheetGid = gid || "0";
+              const sheetGid = (gid && gid !== "0") ? gid : (allTabs[0]?.gid || "0");
               const gvizUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:csv&gid=${sheetGid}`;
               const exportUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=csv&gid=${sheetGid}`;
 

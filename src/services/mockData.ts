@@ -86,4 +86,18 @@ export const DEMO_SHEETS: DemoSheetDef[] = [
 1,Budi Santoso,A,A,A,A,A
 2,Doni Setiawan,A,A,H,H,H`,
   },
+  {
+    id: "demo-baju-koko",
+    name: "Pencatatan Baju Koko Lengkap (Subuh, Maghrib, Isya) - Reward Device",
+    categoryHint: "baju_koko",
+    url: "https://docs.google.com/spreadsheets/d/1DemoAsramaBajuKokoDevice2026/edit#gid=6001",
+    csvContent: `No,Nama Santri,2026-09-01,2026-09-02,2026-09-03,2026-09-04,2026-09-05,2026-09-06,2026-09-07
+1,Ahmad Fauzi,✓,✓,X,✓,✓,✓,X
+2,Budi Santoso,✓,✓,✓,✓,✓,✓,✓
+3,Cahyo Pratama,X,✓,X,✓,X,✓,X
+4,Doni Setiawan,✓,✓,✓,✓,✓,X,✓
+5,Eko Prasetyo,✓,X,✓,✓,X,✓,✓
+6,Fajar Nugroho,✓,✓,✓,X,✓,✓,X
+7,Gani Arifin,✓,✓,✓,✓,✓,✓,✓`,
+  },
 ];

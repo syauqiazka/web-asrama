@@ -96,6 +96,27 @@ export const RulesGuideModal: React.FC<RulesGuideModalProps> = ({ isOpen, onClos
             </table>
           </div>
 
+          <div style={{ background: "rgba(56, 189, 248, 0.08)", padding: "14px", borderRadius: "var(--radius-md)", border: "1px solid rgba(56, 189, 248, 0.2)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", fontWeight: 700, color: "#38bdf8", marginBottom: "6px" }}>
+              <CheckCircle2 size={18} />
+              3. Fitur Reward Jam Device: Baju Koko Lengkap
+            </div>
+            <p style={{ color: "var(--text-secondary)", marginBottom: "8px" }}>
+              Apresiasi adab dan busana santri sholat berjamaah:
+            </p>
+            <ul style={{ paddingLeft: "18px", color: "var(--text-secondary)", lineHeight: 1.6, margin: 0 }}>
+              <li>
+                Santri yang mengenakan <strong>baju koko lengkap</strong> dan tertib sholat wajib (<strong>Subuh, Maghrib, Isya</strong>) mendapatkan <strong>+1 Jam Device</strong> (jatah pemakaian gadget).
+              </li>
+              <li>
+                Dapat diakumulasikan hingga <strong>7 hari (maksimal +7 Jam Device)</strong> per periode.
+              </li>
+              <li>
+                Jam reward ini dicatat pada dashboard dan dapat menjadi kompensasi kedisiplinan santri.
+              </li>
+            </ul>
+          </div>
+
           <div style={{ display: "flex", justifyContent: "flex-end" }}>
             <button className="btn btn-primary" onClick={onClose}>
               <CheckCircle2 size={16} />

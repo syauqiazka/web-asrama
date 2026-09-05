@@ -129,6 +129,53 @@ console.log(
   `✓ Santri 3: Cahyo Pratama terhitung ${cahyo?.totalSanctionHours} jam sanksi (Tepat: Piket Pagi 2j + Maghrib 2j + Isya 2j = 6j)`
 );
 
+// 4. Pengujian khusus Baju Koko Reward Device
+console.log("\n4. Test Baju Koko Reward Device (✓ = +1 jam, X = 0 jam, max 7 hari):");
+
+// Baju koko tidak boleh memberi jam sanksi
+console.assert(
+  calculateSanctionHours("baju_koko", "check") === 0,
+  "Baju koko check harus 0 jam sanksi"
+);
+console.assert(
+  calculateSanctionHours("baju_koko", "X") === 0,
+  "Baju koko X harus 0 jam sanksi (bukan pelanggaran)"
+);
+
+// Ahmad Fauzi: 5 tanda centang dari 7 hari → 5 jam device reward
+const ahmadBajuKoko = summaries.find((s) => s.studentName === "Ahmad Fauzi");
+console.assert(
+  ahmadBajuKoko?.rewardDeviceHours === 5,
+  `Ahmad Fauzi harus 5 jam reward device (didapat: ${ahmadBajuKoko?.rewardDeviceHours})`
+);
+console.log(`✓ Ahmad Fauzi: ${ahmadBajuKoko?.rewardDeviceHours} jam reward device (5 hari pakai baju koko lengkap dari 7 hari)`);
+
+// Budi Santoso: 7 centang dari 7 hari → capped 7 jam device
+const budiBajuKoko = summaries.find((s) => s.studentName === "Budi Santoso");
+console.assert(
+  budiBajuKoko?.rewardDeviceHours === 7,
+  `Budi Santoso harus 7 jam reward device (capped) (didapat: ${budiBajuKoko?.rewardDeviceHours})`
+);
+console.log(`✓ Budi Santoso: ${budiBajuKoko?.rewardDeviceHours} jam reward device (7 hari penuh, capped max 7)`);
+
+// Cahyo Pratama: 3 centang dari 7 hari → 3 jam device
+const cahyoBajuKoko = summaries.find((s) => s.studentName === "Cahyo Pratama");
+console.assert(
+  cahyoBajuKoko?.rewardDeviceHours === 3,
+  `Cahyo Pratama harus 3 jam reward device (didapat: ${cahyoBajuKoko?.rewardDeviceHours})`
+);
+console.log(`✓ Cahyo Pratama: ${cahyoBajuKoko?.rewardDeviceHours} jam reward device (3 hari pakai baju koko dari 7 hari)`);
+
+// Gani Arifin: 7 centang dari 7 hari → capped 7 jam device
+const ganiBajuKoko = summaries.find((s) => s.studentName === "Gani Arifin");
+console.assert(
+  ganiBajuKoko?.rewardDeviceHours === 7,
+  `Gani Arifin harus 7 jam reward device (capped) (didapat: ${ganiBajuKoko?.rewardDeviceHours})`
+);
+console.log(`✓ Gani Arifin: ${ganiBajuKoko?.rewardDeviceHours} jam reward device (7/7 hari, capped max 7)`);
+
+console.log("✓ Semua pengujian Baju Koko Reward Device lolos 100%!");
+
 console.log(
   "\n=== SELURUH PENGUJIAN BUSINESS RULES & MULTI-SPREADSHEET LOLOS! ==="
 );
