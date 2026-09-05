@@ -13,7 +13,6 @@ import {
 } from "lucide-react";
 import type { StudentSummary } from "../types/attendance";
 
-
 interface ChatMessage {
   id: string;
   sender: "user" | "ai";

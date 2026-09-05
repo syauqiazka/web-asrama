@@ -27,7 +27,6 @@ import type {
 } from "./types/attendance";
 import { DEMO_SHEETS } from "./services/mockData";
 
-
 export function App() {
   // Initial State: Form dengan 4 slot link default
   const [sheetInputs, setSheetInputs] = useState<SheetInputItem[]>(() => {
