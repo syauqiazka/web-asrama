@@ -498,7 +498,15 @@ Balas HANYA JSON:
             typeof parsed.nameColumnIndex === "number" &&
             Array.isArray(parsed.dateColumns)
           ) {
-            return parsed;
+            // AI assists classification; column and date structure remains deterministic.
+            const deterministic = heuristicClassifyAndParse(rows, sheetTitle);
+            return {
+              ...parsed,
+              nameColumnIndex: deterministic.nameColumnIndex,
+              dateColumns: deterministic.dateColumns,
+              sheetType: deterministic.sheetType === "unknown" ? parsed.sheetType : deterministic.sheetType,
+              category: deterministic.sheetType === "unknown" ? parsed.category : deterministic.category,
+            };
           }
         }
       }
@@ -530,12 +538,13 @@ export function normalizeSheetData(
     if (!row || row.length === 0) continue;
 
     const rawCell = row[nameColumnIndex]?.trim() || "";
-    // Skip baris header / lantai / kamar / kosong
+    // Ignore floor and room labels even when the spreadsheet has leading spaces.
+    const normalizedNameCell = rawCell.trim().toLocaleUpperCase("id-ID");
     if (
-      !rawCell ||
-      rawCell.startsWith("LANTAI") ||
-      rawCell.startsWith("KAMAR") ||
-      /^(total|jumlah|keterangan|no\.?|nama|sop|area)$/i.test(rawCell)
+      !normalizedNameCell ||
+      normalizedNameCell.startsWith("LANTAI") ||
+      normalizedNameCell.startsWith("KAMAR") ||
+      /^(total|jumlah|keterangan|no\\.?|nama|sop|area)$/i.test(normalizedNameCell)
     ) {
       continue;
     }
