@@ -14,6 +14,8 @@ import { ExportModal } from "./components/ExportModal";
 import { AIChatBot } from "./components/AIChatBot";
 
 import { fetchGoogleSheetCSV } from "./services/sheetFetcher";
+import { parseWorkbookFile, prepareAttendanceRows } from "./services/workbookImporter";
+import type { ImportedWorkbook } from "./services/workbookImporter";
 import { classifySheetWithAI, normalizeSheetData } from "./services/aiClassifier";
 import type { AISettings } from "./services/aiClassifier";
 import {
@@ -63,6 +65,8 @@ export function App() {
     return [];
   });
   const [isProcessing, setIsProcessing] = useState(false);
+  const [importedWorkbooks, setImportedWorkbooks] = useState<ImportedWorkbook[]>([]);
+  const [isImportingFiles, setIsImportingFiles] = useState(false);
   const [hasProcessed, setHasProcessed] = useState(() => {
     return localStorage.getItem("asrama_has_processed") === "true";
   });
@@ -107,6 +111,7 @@ export function App() {
 
   // Handler Reset Form & Data: Kosongkan form dan hapus cache localStorage
   const handleResetData = () => {
+    setImportedWorkbooks([]);
     setAllRecords([]);
     setHasProcessed(false);
     try {
@@ -128,7 +133,7 @@ export function App() {
   // Alur Pemrosesan End-to-End Multi-Spreadsheet (hingga 20 Workbook + Multi-Tab)
   const handleProcessAllSheets = async (isInitialLoad: boolean = false) => {
     const validInputs = sheetInputs.filter((s) => s.url.trim().length > 0);
-    if (validInputs.length === 0) {
+    if (validInputs.length === 0 && importedWorkbooks.length === 0) {
       alert("Harap masukkan minimal 1 link Google Spreadsheet / Workbook.");
       return;
     }
@@ -184,15 +189,16 @@ export function App() {
               ? `${fetchRes.spreadsheetTitle} - Tab ${tab.tabName}`
               : tab.tabName;
 
+            const preparedRows = prepareAttendanceRows(tab.rows);
             const tabClassification = await classifySheetWithAI(
-              tab.rows,
+              preparedRows,
               fullTabTitle,
               aiSettings
             );
 
             if (tabClassification.sheetType !== "unknown") {
               const tabRecords = normalizeSheetData(
-                tab.rows,
+                preparedRows,
                 tabClassification,
                 item.url
               );
@@ -229,8 +235,9 @@ export function App() {
             ? `${fetchRes.spreadsheetTitle} - ${item.sheetTitle || fetchRes.tabName || ""}`
             : (item.sheetTitle || fetchRes.tabName || "");
 
+          const preparedRows = prepareAttendanceRows(fetchRes.rows);
           const classification = await classifySheetWithAI(
-            fetchRes.rows,
+            preparedRows,
             fullTitle,
             aiSettings
           );
@@ -252,7 +259,7 @@ export function App() {
           }
 
           const sheetRecords = normalizeSheetData(
-            fetchRes.rows,
+            preparedRows,
             classification,
             item.url
           );
@@ -290,6 +297,33 @@ export function App() {
               : s
           )
         );
+      }
+    }
+
+    // Workbook unggahan diproses melalui classifier dan normalizer yang sama dengan Google Sheets.
+    for (const workbook of importedWorkbooks) {
+      for (const sheet of workbook.sheets) {
+        try {
+          const preparedRows = prepareAttendanceRows(sheet.rows);
+          const classification = await classifySheetWithAI(
+            preparedRows,
+            `${workbook.name} - Tab ${sheet.name}`,
+            aiSettings
+          );
+          if (classification.sheetType === "unknown") continue;
+
+          const records = normalizeSheetData(
+            preparedRows,
+            classification,
+            `file:///${workbook.name}#${encodeURIComponent(sheet.name)}`
+          );
+          for (const record of records) {
+            record.sanctionHours = calculateSanctionHours(record.category, record.rawStatus);
+          }
+          accumulatedRecords.push(...records);
+        } catch (error) {
+          console.error(`Gagal memproses tab ${sheet.name} dari ${workbook.name}`, error);
+        }
       }
     }
 
@@ -414,9 +448,31 @@ export function App() {
             sheetInputs={sheetInputs}
             setSheetInputs={setSheetInputs}
             onSubmit={() => handleProcessAllSheets(false)}
-            isLoading={isProcessing}
+            isLoading={isProcessing || isImportingFiles}
             onOpenRules={() => setIsRulesModalOpen(true)}
             onResetData={handleResetData}
+            uploadedFiles={importedWorkbooks.map((workbook) => ({ id: workbook.id, name: workbook.name, sheetCount: workbook.sheets.length }))}
+            onFilesSelected={async (files) => {
+              if (!files?.length) return;
+              setIsImportingFiles(true);
+              try {
+                const selected = Array.from(files);
+                for (const file of selected) {
+                  try {
+                    const workbook = await parseWorkbookFile(file);
+                    setImportedWorkbooks((previous) => {
+                      const withoutDuplicate = previous.filter((item) => item.id !== workbook.id);
+                      return [...withoutDuplicate, workbook];
+                    });
+                  } catch (error) {
+                    alert(error instanceof Error ? error.message : `Gagal membaca ${file.name}`);
+                  }
+                }
+              } finally {
+                setIsImportingFiles(false);
+              }
+            }}
+            onRemoveUploadedFile={(id) => setImportedWorkbooks((previous) => previous.filter((workbook) => workbook.id !== id))}
           />
 
           {/* Status Pemrosesan Tiap Sheet / Workbook */}
@@ -450,7 +506,7 @@ export function App() {
                 Belum Ada Data yang Direkapitulasi
               </h3>
               <p style={{ color: "var(--text-secondary)", maxWidth: "480px", fontSize: "0.875rem" }}>
-                Silakan beralih ke <strong>Tab 1: Input Sheet</strong>, masukkan link Google Spreadsheet / Workbook, lalu klik tombol "Proses & Rekapitulasi Data".
+                Silakan beralih ke <strong>Tab 1: Input Sheet</strong>, masukkan link Google Spreadsheet atau unggah file Excel, lalu klik tombol "Proses & Rekapitulasi Data".
               </p>
               <button
                 type="button"

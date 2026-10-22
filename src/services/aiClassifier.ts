@@ -63,25 +63,34 @@ const MONTH_MAP: Record<string, string> = {
   dec: "12",
 };
 
+function buildValidatedISODate(year: string | number, month: string | number, day: string | number): string {
+  const y = Number(year);
+  const m = Number(month);
+  const d = Number(day);
+  if (!Number.isInteger(y) || !Number.isInteger(m) || !Number.isInteger(d)) return "";
+  const date = new Date(Date.UTC(y, m - 1, d));
+  if (date.getUTCFullYear() !== y || date.getUTCMonth() !== m - 1 || date.getUTCDate() !== d) return "";
+  return `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+}
+
 /**
- * Format tanggal ke ISO YYYY-MM-DD
+ * Format tanggal ke ISO YYYY-MM-DD; tanggal tidak valid dikembalikan sebagai string kosong.
  */
 export function normalizeDateToISO(
   rawDate: string,
   defaultMonth: string = "09",
   defaultYear: string = "2026"
 ): string {
-  const trimmed = rawDate.trim().replace(/^tgl\.?\s*/i, "");
+  const trimmed = rawDate.trim().replace(/^tgl\.?\s*/i, "").replace(/\.0$/, "");
 
   // Format standar ISO YYYY-MM-DD
-  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
-    return trimmed;
-  }
+  const iso = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ t].*)?$/i);
+  if (iso) return buildValidatedISODate(iso[1], iso[2], iso[3]);
 
   // Format YYYY/MM/DD
   const ymd = trimmed.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})$/);
   if (ymd) {
-    return `${ymd[1]}-${ymd[2].padStart(2, "0")}-${ymd[3].padStart(2, "0")}`;
+    return buildValidatedISODate(ymd[1], ymd[2], ymd[3]);
   }
 
   // Format DD-Mon atau DD Mon atau DD MMMM (misal: 5-Jan, 12 Feb, 28 Oktober)
@@ -89,7 +98,7 @@ export function normalizeDateToISO(
   if (dMon) {
     const day = dMon[1].padStart(2, "0");
     const mon = MONTH_MAP[dMon[2].toLowerCase()] || defaultMonth;
-    return `${defaultYear}-${mon}-${day}`;
+    return buildValidatedISODate(defaultYear, mon, day);
   }
 
   // Format Mon DD (misal: Sep 05, September 5)
@@ -97,7 +106,7 @@ export function normalizeDateToISO(
   if (monD) {
     const mon = MONTH_MAP[monD[1].toLowerCase()] || defaultMonth;
     const day = monD[2].padStart(2, "0");
-    return `${defaultYear}-${mon}-${day}`;
+    return buildValidatedISODate(defaultYear, mon, day);
   }
 
   // Format DD/MM/YYYY atau DD-MM-YYYY
@@ -106,7 +115,7 @@ export function normalizeDateToISO(
     const day = dmy[1].padStart(2, "0");
     const month = dmy[2].padStart(2, "0");
     const year = dmy[3];
-    return `${year}-${month}-${day}`;
+    return buildValidatedISODate(year, month, day);
   }
 
   // Format DD/MM atau DD-MM
@@ -114,7 +123,7 @@ export function normalizeDateToISO(
   if (dm) {
     const day = dm[1].padStart(2, "0");
     const month = dm[2].padStart(2, "0");
-    return `${defaultYear}-${month}-${day}`;
+    return buildValidatedISODate(defaultYear, month, day);
   }
 
   // Angka tanggal saja (1 sampai 31)
@@ -122,7 +131,7 @@ export function normalizeDateToISO(
   if (dayOnly) {
     const d = parseInt(dayOnly[1]);
     if (d >= 1 && d <= 31) {
-      return `${defaultYear}-${defaultMonth}-${dayOnly[1].padStart(2, "0")}`;
+      return buildValidatedISODate(defaultYear, defaultMonth, dayOnly[1]);
     }
   }
 
@@ -132,7 +141,7 @@ export function normalizeDateToISO(
     return parsed.toISOString().split("T")[0];
   }
 
-  return `${defaultYear}-${defaultMonth}-01`;
+  return "";
 }
 
 /**
@@ -174,24 +183,22 @@ export function heuristicClassifyAndParse(
   const tabNameMatch = sheetTitle.match(/- Tab (.+)$/i);
   const tabNameOnly = (tabNameMatch ? tabNameMatch[1] : sheetTitle).toLowerCase();
 
-  // Deteksi tahun (default 2026 atau tahun saat ini)
-  let detectedYear = "2026";
-  const yearMatch = contextText.match(/20\d{2}/);
-  if (yearMatch) {
-    detectedYear = yearMatch[0];
-  }
-
-  // Deteksi bulan jika tercantum di judul atau sel header
-  let detectedMonth = String(new Date().getMonth() + 1).padStart(2, "0");
-  for (const [monKey, monNum] of Object.entries(MONTH_MAP)) {
-    if (contextText.includes(monKey)) {
-      detectedMonth = monNum;
-      break;
-    }
+  // Tahun dan bulan dari nama workbook/tab diprioritaskan daripada label template
+  // di sel pertama (contoh: workbook September 2026 dengan label sel "Apr").
+  let detectedYear = sheetTitle.match(/20\d{2}/)?.[0] ?? "2026";
+  const titleMonth = Object.entries(MONTH_MAP).find(([key]) =>
+    new RegExp(`(?:^|[^a-z])${key}(?:$|[^a-z])`, "i").test(sheetTitle)
+  );
+  let detectedMonth = titleMonth?.[1] ?? String(new Date().getMonth() + 1).padStart(2, "0");
+  if (!titleMonth) {
+    const headerMonth = Object.entries(MONTH_MAP).find(([key]) =>
+      new RegExp(`(?:^|[^a-z])${key}(?:$|[^a-z])`, "i").test(header.join(" "))
+    );
+    if (headerMonth) detectedMonth = headerMonth[1];
   }
 
   // Jika belum terdeteksi dari kata, cek apakah ada format tanggal eksplisit seperti 2026-09-01 atau 01/09/2026 di header
-  for (const h of header) {
+  for (const h of (titleMonth ? [] : header)) {
     const isoM = h.match(/\d{4}-(\d{2})-\d{2}/);
     if (isoM) {
       detectedMonth = isoM[1];
@@ -262,36 +269,49 @@ export function heuristicClassifyAndParse(
   // 2. Deteksi kolom tanggal
   const dateColumns: { colIndex: number; rawDate: string; isoDate: string }[] = [];
 
+  // Detect month rollover in day-only headers (e.g. 30, 31, 1, 2 in a September workbook).
+  const headerDays = rows[0].map((value, index) => ({ index, text: String(value ?? "").trim().replace(/\.0$/, "") }))
+    .filter(({ index, text }) => index !== nameColIdx && /^\d{1,2}$/.test(text) && Number(text) >= 1 && Number(text) <= 31);
+  const hasRollover = headerDays.some((day, index) => index > 0 && Number(day.text) < Number(headerDays[index - 1].text));
+  let dateMonth = Number(detectedMonth);
+  let dateYear = Number(detectedYear);
+  if (hasRollover && headerDays.length && Number(headerDays[0].text) >= 28) {
+    dateMonth -= 1;
+    if (dateMonth < 1) { dateMonth = 12; dateYear -= 1; }
+  }
+  let previousDay: number | undefined;
+
   for (let c = 0; c < rows[0].length; c++) {
     if (c === nameColIdx) continue;
-    const colHeader = rows[0][c]?.trim() || "";
+    const colHeader = String(rows[0][c] ?? "").trim();
+    const normalizedHeader = colHeader.replace(/\.0$/, "");
 
-    // Abaikan kolom summary atau non-tanggal seperti "Hadir", "% H", "Sakit", "Izin", "Alpa", "Area", "Kamar"
-    if (
-      /^(hadir|%|sakit|izin|alpa|alpha|total|jumlah|ket|keterangan|area|kamar|kelas|nis|no\.?)$/i.test(
-        colHeader
-      ) ||
-      colHeader.includes("AREA") ||
-      colHeader.includes("TANGGAL")
-    ) {
-      continue;
+    if (/^(hadir|%\s*h?|sakit|izin|alpa|alpha|total|jumlah|ket|keterangan|area|kamar|kelas|nis|no\.?|persentase)$/i.test(normalizedHeader) ||
+        /area|tanggal|nama|santri|siswa/i.test(normalizedHeader)) continue;
+
+    const explicitDate = /^\d{4}-\d{2}-\d{2}(?:[ t].*)?$/.test(colHeader) ||
+      /^\d{1,2}[/-]\d{1,2}[/-]\d{2,4}$/.test(colHeader) ||
+      /^\d{1,2}-[a-zA-Z]{3,12}$/i.test(colHeader) ||
+      /^[a-zA-Z]{3,12}[ -]\d{1,2}$/i.test(colHeader);
+    const dayOnly = /^\d{1,2}$/.test(normalizedHeader) && Number(normalizedHeader) >= 1 && Number(normalizedHeader) <= 31;
+    if (!explicitDate && !dayOnly) continue;
+
+    let isoDate = "";
+    if (dayOnly) {
+      const day = Number(normalizedHeader);
+      if (previousDay !== undefined && day < previousDay) {
+        dateMonth += 1;
+        if (dateMonth > 12) { dateMonth = 1; dateYear += 1; }
+      }
+      previousDay = day;
+      const candidate = new Date(Date.UTC(dateYear, dateMonth - 1, day));
+      if (candidate.getUTCFullYear() === dateYear && candidate.getUTCMonth() === dateMonth - 1 && candidate.getUTCDate() === day) {
+        isoDate = `${dateYear}-${String(dateMonth).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+      }
+    } else {
+      isoDate = normalizeDateToISO(colHeader, detectedMonth, detectedYear);
     }
-
-    // Cek format tanggal: 5-Jan, 12-Feb, YYYY-MM-DD, atau angka 1-31
-    const isDatePattern =
-      /^\d{1,2}-[a-zA-Z]{3,4}$/i.test(colHeader) ||
-      /^\d{4}-\d{2}-\d{2}$/.test(colHeader) ||
-      /^\d{1,2}[/-]\d{1,2}([/-]\d{2,4})?$/.test(colHeader);
-
-    const isDayNumber = /^\d{1,2}$/.test(colHeader) && parseInt(colHeader) <= 31 && parseInt(colHeader) >= 1;
-
-    if (isDatePattern || isDayNumber) {
-      dateColumns.push({
-        colIndex: c,
-        rawDate: colHeader,
-        isoDate: normalizeDateToISO(colHeader, detectedMonth, detectedYear),
-      });
-    }
+    if (isoDate) dateColumns.push({ colIndex: c, rawDate: colHeader, isoDate });
   }
 
   // 3. Deteksi tipe: Sholat vs Piket
@@ -417,6 +437,17 @@ export function heuristicClassifyAndParse(
     }
   }
 
+  if (nameColIdx < 0 || dateColumns.length === 0) {
+    return {
+      sheetType: "unknown",
+      category,
+      confidence: 0,
+      reasoning: "Tidak ditemukan kolom nama dan tanggal yang valid; data tidak diproses agar tanggal tidak ditebak.",
+      nameColumnIndex: -1,
+      dateColumns: [],
+    };
+  }
+
   return {
     sheetType: isPiket ? "piket" : "sholat",
     category,
@@ -487,7 +518,22 @@ Balas HANYA JSON:
             typeof parsed.nameColumnIndex === "number" &&
             Array.isArray(parsed.dateColumns)
           ) {
-            return parsed;
+            // AI assists classification; column and date structure remains deterministic.
+            const deterministic = heuristicClassifyAndParse(rows, sheetTitle);
+            if (
+              deterministic.sheetType === "unknown" ||
+              deterministic.nameColumnIndex < 0 ||
+              deterministic.dateColumns.length === 0
+            ) {
+              return deterministic;
+            }
+            return {
+              ...parsed,
+              nameColumnIndex: deterministic.nameColumnIndex,
+              dateColumns: deterministic.dateColumns,
+              sheetType: deterministic.sheetType === "unknown" ? parsed.sheetType : deterministic.sheetType,
+              category: deterministic.sheetType === "unknown" ? parsed.category : deterministic.category,
+            };
           }
         }
       }
@@ -519,12 +565,13 @@ export function normalizeSheetData(
     if (!row || row.length === 0) continue;
 
     const rawCell = row[nameColumnIndex]?.trim() || "";
-    // Skip baris header / lantai / kamar / kosong
+    // Ignore floor and room labels even when the spreadsheet has leading spaces.
+    const normalizedNameCell = rawCell.trim().toLocaleUpperCase("id-ID");
     if (
-      !rawCell ||
-      rawCell.startsWith("LANTAI") ||
-      rawCell.startsWith("KAMAR") ||
-      /^(total|jumlah|keterangan|no\.?|nama|sop|area)$/i.test(rawCell)
+      !normalizedNameCell ||
+      normalizedNameCell.startsWith("LANTAI") ||
+      normalizedNameCell.startsWith("KAMAR") ||
+      /^(total|jumlah|keterangan|no\\.?|nama|sop|area)$/i.test(normalizedNameCell)
     ) {
       continue;
     }

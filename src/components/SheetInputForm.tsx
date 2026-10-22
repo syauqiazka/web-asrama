@@ -13,6 +13,8 @@ import { validateGoogleSheetUrl } from "../services/sheetFetcher";
 import { DEMO_SHEETS } from "../services/mockData";
 import type { SheetInputItem } from "../types/attendance";
 
+interface UploadedFileInfo { id: string; name: string; sheetCount: number; }
+
 interface SheetInputFormProps {
   sheetInputs: SheetInputItem[];
   setSheetInputs: React.Dispatch<React.SetStateAction<SheetInputItem[]>>;
@@ -20,6 +22,9 @@ interface SheetInputFormProps {
   isLoading: boolean;
   onOpenRules: () => void;
   onResetData?: () => void;
+  uploadedFiles: UploadedFileInfo[];
+  onFilesSelected: (files: FileList | null) => void;
+  onRemoveUploadedFile: (id: string) => void;
 }
 
 export const SheetInputForm: React.FC<SheetInputFormProps> = ({
@@ -29,6 +34,9 @@ export const SheetInputForm: React.FC<SheetInputFormProps> = ({
   isLoading,
   onOpenRules,
   onResetData,
+  uploadedFiles,
+  onFilesSelected,
+  onRemoveUploadedFile,
 }) => {
   const handleUrlChange = (id: string, newUrl: string) => {
     setSheetInputs((prev) =>
@@ -97,7 +105,7 @@ export const SheetInputForm: React.FC<SheetInputFormProps> = ({
   const hasErrors = sheetInputs.some(
     (s) => s.url.trim().length > 0 && s.errorMessage
   );
-  const isFormValid = filledCount >= 1 && !hasErrors;
+  const isFormValid = (filledCount >= 1 || uploadedFiles.length > 0) && !hasErrors;
 
   return (
     <div className="glass-card">
@@ -108,7 +116,7 @@ export const SheetInputForm: React.FC<SheetInputFormProps> = ({
             Input Link Google Spreadsheet / Workbook (Hingga 20 Workbook)
           </h2>
           <p className="card-subtitle">
-            Masukkan link Google Spreadsheet (bisa multi-tab per workbook). Sistem otomatis membaca semua sub-tab sholat (Subuh, Maghrib, Isya) & piket.
+            Impor dari link Google Spreadsheet atau unggah file Excel (.xlsx/.xls). Tab absensi yang didukung akan diproses bersama.
           </p>
         </div>
         <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
@@ -142,6 +150,37 @@ export const SheetInputForm: React.FC<SheetInputFormProps> = ({
             Reset
           </button>
         </div>
+      </div>
+
+      <div style={{ marginTop: "16px", marginBottom: "18px", padding: "16px", border: "1px dashed var(--border-color, rgba(148,163,184,.35))", borderRadius: "12px" }}>
+        <label style={{ display: "flex", flexDirection: "column", gap: "8px", cursor: isLoading ? "not-allowed" : "pointer", fontWeight: 600 }}>
+          <span>Unggah file Excel langsung</span>
+          <input
+            type="file"
+            accept=".xlsx,.xls,.xlsm"
+            multiple
+            disabled={isLoading}
+            onChange={(event) => {
+              onFilesSelected(event.currentTarget.files);
+              event.currentTarget.value = "";
+            }}
+          />
+          <span style={{ color: "var(--text-muted)", fontSize: "0.8rem", fontWeight: 400 }}>
+            Maksimal 20 MB per file. Tab SOP, jadwal, biodata, rekap, dan tab non-absensi akan dilewati.
+          </span>
+        </label>
+        {uploadedFiles.length > 0 && (
+          <div style={{ display: "grid", gap: "8px", marginTop: "12px" }}>
+            {uploadedFiles.map((file) => (
+              <div key={file.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", fontSize: "0.85rem" }}>
+                <span>{file.name} — {file.sheetCount} tab absensi</span>
+                <button type="button" className="btn-outline-danger btn-icon" onClick={() => onRemoveUploadedFile(file.id)} disabled={isLoading} aria-label={`Hapus ${file.name}`}>
+                  <Trash2 size={15} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <div style={{ marginTop: "16px" }}>
@@ -228,7 +267,7 @@ export const SheetInputForm: React.FC<SheetInputFormProps> = ({
             }}
           >
             {filledCount === 0
-              ? "Masukkan minimal 1 link spreadsheet / workbook"
+              ? (uploadedFiles.length > 0 ? "File Excel siap diproses" : "Masukkan link atau unggah file Excel")
               : `✓ ${filledCount} workbook siap diproses (maksimal 20)`}
           </span>
         </div>
