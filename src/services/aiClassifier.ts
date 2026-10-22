@@ -106,7 +106,7 @@ export function normalizeDateToISO(
   if (monD) {
     const mon = MONTH_MAP[monD[1].toLowerCase()] || defaultMonth;
     const day = monD[2].padStart(2, "0");
-    return `${defaultYear}-${mon}-${day}`;
+    return buildValidatedISODate(defaultYear, mon, day);
   }
 
   // Format DD/MM/YYYY atau DD-MM-YYYY
