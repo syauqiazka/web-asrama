@@ -63,8 +63,18 @@ const MONTH_MAP: Record<string, string> = {
   dec: "12",
 };
 
+function buildValidatedISODate(year: string | number, month: string | number, day: string | number): string {
+  const y = Number(year);
+  const m = Number(month);
+  const d = Number(day);
+  if (!Number.isInteger(y) || !Number.isInteger(m) || !Number.isInteger(d)) return "";
+  const date = new Date(Date.UTC(y, m - 1, d));
+  if (date.getUTCFullYear() !== y || date.getUTCMonth() !== m - 1 || date.getUTCDate() !== d) return "";
+  return `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+}
+
 /**
- * Format tanggal ke ISO YYYY-MM-DD
+ * Format tanggal ke ISO YYYY-MM-DD; tanggal tidak valid dikembalikan sebagai string kosong.
  */
 export function normalizeDateToISO(
   rawDate: string,
@@ -74,14 +84,13 @@ export function normalizeDateToISO(
   const trimmed = rawDate.trim().replace(/^tgl\.?\s*/i, "").replace(/\.0$/, "");
 
   // Format standar ISO YYYY-MM-DD
-  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
-    return trimmed;
-  }
+  const iso = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (iso) return buildValidatedISODate(iso[1], iso[2], iso[3]);
 
   // Format YYYY/MM/DD
   const ymd = trimmed.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})$/);
   if (ymd) {
-    return `${ymd[1]}-${ymd[2].padStart(2, "0")}-${ymd[3].padStart(2, "0")}`;
+    return buildValidatedISODate(ymd[1], ymd[2], ymd[3]);
   }
 
   // Format DD-Mon atau DD Mon atau DD MMMM (misal: 5-Jan, 12 Feb, 28 Oktober)
@@ -89,7 +98,7 @@ export function normalizeDateToISO(
   if (dMon) {
     const day = dMon[1].padStart(2, "0");
     const mon = MONTH_MAP[dMon[2].toLowerCase()] || defaultMonth;
-    return `${defaultYear}-${mon}-${day}`;
+    return buildValidatedISODate(defaultYear, mon, day);
   }
 
   // Format Mon DD (misal: Sep 05, September 5)
@@ -106,7 +115,7 @@ export function normalizeDateToISO(
     const day = dmy[1].padStart(2, "0");
     const month = dmy[2].padStart(2, "0");
     const year = dmy[3];
-    return `${year}-${month}-${day}`;
+    return buildValidatedISODate(year, month, day);
   }
 
   // Format DD/MM atau DD-MM
@@ -114,7 +123,7 @@ export function normalizeDateToISO(
   if (dm) {
     const day = dm[1].padStart(2, "0");
     const month = dm[2].padStart(2, "0");
-    return `${defaultYear}-${month}-${day}`;
+    return buildValidatedISODate(defaultYear, month, day);
   }
 
   // Angka tanggal saja (1 sampai 31)
@@ -122,7 +131,7 @@ export function normalizeDateToISO(
   if (dayOnly) {
     const d = parseInt(dayOnly[1]);
     if (d >= 1 && d <= 31) {
-      return `${defaultYear}-${defaultMonth}-${dayOnly[1].padStart(2, "0")}`;
+      return buildValidatedISODate(defaultYear, defaultMonth, dayOnly[1]);
     }
   }
 
