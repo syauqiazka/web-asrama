@@ -520,6 +520,13 @@ Balas HANYA JSON:
           ) {
             // AI assists classification; column and date structure remains deterministic.
             const deterministic = heuristicClassifyAndParse(rows, sheetTitle);
+            if (
+              deterministic.sheetType === "unknown" ||
+              deterministic.nameColumnIndex < 0 ||
+              deterministic.dateColumns.length === 0
+            ) {
+              return deterministic;
+            }
             return {
               ...parsed,
               nameColumnIndex: deterministic.nameColumnIndex,
