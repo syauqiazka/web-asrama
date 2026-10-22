@@ -198,7 +198,7 @@ export function heuristicClassifyAndParse(
   }
 
   // Jika belum terdeteksi dari kata, cek apakah ada format tanggal eksplisit seperti 2026-09-01 atau 01/09/2026 di header
-  for (const h of header) {
+  for (const h of (titleMonth ? [] : header)) {
     const isoM = h.match(/\d{4}-(\d{2})-\d{2}/);
     if (isoM) {
       detectedMonth = isoM[1];
