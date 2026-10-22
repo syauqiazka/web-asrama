@@ -71,7 +71,7 @@ export function normalizeDateToISO(
   defaultMonth: string = "09",
   defaultYear: string = "2026"
 ): string {
-  const trimmed = rawDate.trim().replace(/^tgl\.?\s*/i, "");
+  const trimmed = rawDate.trim().replace(/^tgl\.?\s*/i, "").replace(/\.0$/, "");
 
   // Format standar ISO YYYY-MM-DD
   if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
@@ -132,7 +132,7 @@ export function normalizeDateToISO(
     return parsed.toISOString().split("T")[0];
   }
 
-  return `${defaultYear}-${defaultMonth}-01`;
+  return "";
 }
 
 /**
@@ -174,20 +174,18 @@ export function heuristicClassifyAndParse(
   const tabNameMatch = sheetTitle.match(/- Tab (.+)$/i);
   const tabNameOnly = (tabNameMatch ? tabNameMatch[1] : sheetTitle).toLowerCase();
 
-  // Deteksi tahun (default 2026 atau tahun saat ini)
-  let detectedYear = "2026";
-  const yearMatch = contextText.match(/20\d{2}/);
-  if (yearMatch) {
-    detectedYear = yearMatch[0];
-  }
-
-  // Deteksi bulan jika tercantum di judul atau sel header
-  let detectedMonth = String(new Date().getMonth() + 1).padStart(2, "0");
-  for (const [monKey, monNum] of Object.entries(MONTH_MAP)) {
-    if (contextText.includes(monKey)) {
-      detectedMonth = monNum;
-      break;
-    }
+  // Tahun dan bulan dari nama workbook/tab diprioritaskan daripada label template
+  // di sel pertama (contoh: workbook September 2026 dengan label sel "Apr").
+  let detectedYear = sheetTitle.match(/20\d{2}/)?.[0] ?? "2026";
+  const titleMonth = Object.entries(MONTH_MAP).find(([key]) =>
+    new RegExp(`(?:^|[^a-z])${key}(?:$|[^a-z])`, "i").test(sheetTitle)
+  );
+  let detectedMonth = titleMonth?.[1] ?? String(new Date().getMonth() + 1).padStart(2, "0");
+  if (!titleMonth) {
+    const headerMonth = Object.entries(MONTH_MAP).find(([key]) =>
+      new RegExp(`(?:^|[^a-z])${key}(?:$|[^a-z])`, "i").test(header.join(" "))
+    );
+    if (headerMonth) detectedMonth = headerMonth[1];
   }
 
   // Jika belum terdeteksi dari kata, cek apakah ada format tanggal eksplisit seperti 2026-09-01 atau 01/09/2026 di header
@@ -262,36 +260,49 @@ export function heuristicClassifyAndParse(
   // 2. Deteksi kolom tanggal
   const dateColumns: { colIndex: number; rawDate: string; isoDate: string }[] = [];
 
+  // Detect month rollover in day-only headers (e.g. 30, 31, 1, 2 in a September workbook).
+  const headerDays = rows[0].map((value, index) => ({ index, text: String(value ?? "").trim().replace(/\.0$/, "") }))
+    .filter(({ index, text }) => index !== nameColIdx && /^\d{1,2}$/.test(text) && Number(text) >= 1 && Number(text) <= 31);
+  const hasRollover = headerDays.some((day, index) => index > 0 && Number(day.text) < Number(headerDays[index - 1].text));
+  let dateMonth = Number(detectedMonth);
+  let dateYear = Number(detectedYear);
+  if (hasRollover && headerDays.length && Number(headerDays[0].text) >= 28) {
+    dateMonth -= 1;
+    if (dateMonth < 1) { dateMonth = 12; dateYear -= 1; }
+  }
+  let previousDay: number | undefined;
+
   for (let c = 0; c < rows[0].length; c++) {
     if (c === nameColIdx) continue;
-    const colHeader = rows[0][c]?.trim() || "";
+    const colHeader = String(rows[0][c] ?? "").trim();
+    const normalizedHeader = colHeader.replace(/\.0$/, "");
 
-    // Abaikan kolom summary atau non-tanggal seperti "Hadir", "% H", "Sakit", "Izin", "Alpa", "Area", "Kamar"
-    if (
-      /^(hadir|%|sakit|izin|alpa|alpha|total|jumlah|ket|keterangan|area|kamar|kelas|nis|no\.?)$/i.test(
-        colHeader
-      ) ||
-      colHeader.includes("AREA") ||
-      colHeader.includes("TANGGAL")
-    ) {
-      continue;
+    if (/^(hadir|%\s*h?|sakit|izin|alpa|alpha|total|jumlah|ket|keterangan|area|kamar|kelas|nis|no\.?|persentase)$/i.test(normalizedHeader) ||
+        /area|tanggal|nama|santri|siswa/i.test(normalizedHeader)) continue;
+
+    const explicitDate = /^\d{4}-\d{2}-\d{2}(?:[ t].*)?$/.test(colHeader) ||
+      /^\d{1,2}[/-]\d{1,2}[/-]\d{2,4}$/.test(colHeader) ||
+      /^\d{1,2}-[a-zA-Z]{3,12}$/i.test(colHeader) ||
+      /^[a-zA-Z]{3,12}[ -]\d{1,2}$/i.test(colHeader);
+    const dayOnly = /^\d{1,2}$/.test(normalizedHeader) && Number(normalizedHeader) >= 1 && Number(normalizedHeader) <= 31;
+    if (!explicitDate && !dayOnly) continue;
+
+    let isoDate = "";
+    if (dayOnly) {
+      const day = Number(normalizedHeader);
+      if (previousDay !== undefined && day < previousDay) {
+        dateMonth += 1;
+        if (dateMonth > 12) { dateMonth = 1; dateYear += 1; }
+      }
+      previousDay = day;
+      const candidate = new Date(Date.UTC(dateYear, dateMonth - 1, day));
+      if (candidate.getUTCFullYear() === dateYear && candidate.getUTCMonth() === dateMonth - 1 && candidate.getUTCDate() === day) {
+        isoDate = `${dateYear}-${String(dateMonth).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+      }
+    } else {
+      isoDate = normalizeDateToISO(colHeader, detectedMonth, detectedYear);
     }
-
-    // Cek format tanggal: 5-Jan, 12-Feb, YYYY-MM-DD, atau angka 1-31
-    const isDatePattern =
-      /^\d{1,2}-[a-zA-Z]{3,4}$/i.test(colHeader) ||
-      /^\d{4}-\d{2}-\d{2}$/.test(colHeader) ||
-      /^\d{1,2}[/-]\d{1,2}([/-]\d{2,4})?$/.test(colHeader);
-
-    const isDayNumber = /^\d{1,2}$/.test(colHeader) && parseInt(colHeader) <= 31 && parseInt(colHeader) >= 1;
-
-    if (isDatePattern || isDayNumber) {
-      dateColumns.push({
-        colIndex: c,
-        rawDate: colHeader,
-        isoDate: normalizeDateToISO(colHeader, detectedMonth, detectedYear),
-      });
-    }
+    if (isoDate) dateColumns.push({ colIndex: c, rawDate: colHeader, isoDate });
   }
 
   // 3. Deteksi tipe: Sholat vs Piket
