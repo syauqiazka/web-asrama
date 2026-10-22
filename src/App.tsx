@@ -66,6 +66,7 @@ export function App() {
   });
   const [isProcessing, setIsProcessing] = useState(false);
   const [importedWorkbooks, setImportedWorkbooks] = useState<ImportedWorkbook[]>([]);
+  const [isImportingFiles, setIsImportingFiles] = useState(false);
   const [hasProcessed, setHasProcessed] = useState(() => {
     return localStorage.getItem("asrama_has_processed") === "true";
   });
@@ -110,6 +111,7 @@ export function App() {
 
   // Handler Reset Form & Data: Kosongkan form dan hapus cache localStorage
   const handleResetData = () => {
+    setImportedWorkbooks([]);
     setAllRecords([]);
     setHasProcessed(false);
     try {
@@ -446,23 +448,28 @@ export function App() {
             sheetInputs={sheetInputs}
             setSheetInputs={setSheetInputs}
             onSubmit={() => handleProcessAllSheets(false)}
-            isLoading={isProcessing}
+            isLoading={isProcessing || isImportingFiles}
             onOpenRules={() => setIsRulesModalOpen(true)}
             onResetData={handleResetData}
             uploadedFiles={importedWorkbooks.map((workbook) => ({ id: workbook.id, name: workbook.name, sheetCount: workbook.sheets.length }))}
             onFilesSelected={async (files) => {
               if (!files?.length) return;
-              const selected = Array.from(files);
-              for (const file of selected) {
-                try {
-                  const workbook = await parseWorkbookFile(file);
-                  setImportedWorkbooks((previous) => {
-                    const withoutDuplicate = previous.filter((item) => item.id !== workbook.id);
-                    return [...withoutDuplicate, workbook];
-                  });
-                } catch (error) {
-                  alert(error instanceof Error ? error.message : `Gagal membaca ${file.name}`);
+              setIsImportingFiles(true);
+              try {
+                const selected = Array.from(files);
+                for (const file of selected) {
+                  try {
+                    const workbook = await parseWorkbookFile(file);
+                    setImportedWorkbooks((previous) => {
+                      const withoutDuplicate = previous.filter((item) => item.id !== workbook.id);
+                      return [...withoutDuplicate, workbook];
+                    });
+                  } catch (error) {
+                    alert(error instanceof Error ? error.message : `Gagal membaca ${file.name}`);
+                  }
                 }
+              } finally {
+                setIsImportingFiles(false);
               }
             }}
             onRemoveUploadedFile={(id) => setImportedWorkbooks((previous) => previous.filter((workbook) => workbook.id !== id))}
