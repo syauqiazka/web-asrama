@@ -84,7 +84,7 @@ export function normalizeDateToISO(
   const trimmed = rawDate.trim().replace(/^tgl\.?\s*/i, "").replace(/\.0$/, "");
 
   // Format standar ISO YYYY-MM-DD
-  const iso = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const iso = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ t].*)?$/i);
   if (iso) return buildValidatedISODate(iso[1], iso[2], iso[3]);
 
   // Format YYYY/MM/DD
@@ -435,6 +435,17 @@ export function heuristicClassifyAndParse(
       category = "sholat_subuh";
       reasoning = "Terdeteksi sebagai Absensi Sholat Subuh.";
     }
+  }
+
+  if (nameColIdx < 0 || dateColumns.length === 0) {
+    return {
+      sheetType: "unknown",
+      category,
+      confidence: 0,
+      reasoning: "Tidak ditemukan kolom nama dan tanggal yang valid; data tidak diproses agar tanggal tidak ditebak.",
+      nameColumnIndex: -1,
+      dateColumns: [],
+    };
   }
 
   return {
